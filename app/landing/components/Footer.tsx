@@ -60,6 +60,14 @@ export function Footer() {
                   Terms of Service
                 </Link>
               </li>
+                    <a
+        href="mailto:contact@advisorly.uk?subject=Mend%20Support%20Request"
+        className="hover:text-slate-900"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Support
+      </a>
             </ul>
           </div>
         </div>

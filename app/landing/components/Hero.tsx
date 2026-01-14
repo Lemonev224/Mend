@@ -47,9 +47,13 @@ export default function Hero() {
               Sign in
             </Link>
 
-            <Button size="sm" className="h-9 rounded-md bg-slate-900 hover:bg-slate-800">
-              Recover revenue
-            </Button>
+            <Button 
+  size="sm" 
+  className="h-9 rounded-md bg-slate-900 hover:bg-slate-800"
+  asChild
+>
+  <Link href="/sign-up">Recover revenue</Link>
+</Button>
           </div>
 
         </div>
@@ -82,14 +86,14 @@ export default function Hero() {
             {/* Subheading */}
             <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-600">
               Mend fixes <span className="text-slate-900 font-medium">involuntary churn</span>.
-              When a customer’s card fails, Mend reaches out once — like a human —
+              When a customer’s card fails, Mend reaches out once like a human 
               recovers the payment, and stops.
             </p>
 
             {/* CTAs */}
             <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Button size="lg" className="h-11 px-8 bg-slate-900 hover:bg-slate-800">
-                Start recovering revenue
+              <Button size="lg" className="h-11 px-8 bg-slate-900 hover:bg-slate-800" >
+                <Link href="/sign-up">Start recovering revenue</Link>
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Link
@@ -111,7 +115,7 @@ export default function Hero() {
                 <strong className="text-slate-900 font-medium">Hey Alex —</strong>
                 <br /><br />
                 Just a quick heads-up that your card didn’t go through this month.
-                No rush — you can update it here when it’s convenient.
+                No rush you can update it here when it’s convenient.
                 <br /><br />
                 <span className="text-slate-500">— Sam</span>
               </div>

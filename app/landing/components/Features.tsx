@@ -3,32 +3,32 @@ import { CheckCircle, Mail, MessageSquare, ShieldCheck, BarChart3 } from "lucide
 export default function Features() {
   const features = [
     {
-      title: "Detect Failed Payments Instantly",
+      title: "Instant Detection",
       description:
-        "Mend listens for failed Stripe payments in real time and responds the moment revenue is at risk.",
+        "Mend tracks failed Stripe payments in real-time to protect revenue the moment it's at risk.",
       icon: <Mail className="h-6 w-6" />,
-      benefit: "No delays, no manual checks",
+      benefit: "No manual checks required",
     },
     {
-      title: "Human-Sounding Follow-Ups",
+      title: "Human Touch",
       description:
-        "Messages are written in your voice and feel like a personal check-in — not a billing reminder.",
+        "Automated messages written in your voice that feel like a personal check-in.",
       icon: <MessageSquare className="h-6 w-6" />,
       benefit: "Customers feel helped, not chased",
     },
     {
-      title: "Smart Channel Escalation",
+      title: "Email Recovery",
       description:
-        "Email first. SMS or WhatsApp only if ignored — and only once.",
+        "Proven email sequences that recover accounts before the subscription cancels.",
       icon: <ShieldCheck className="h-6 w-6" />,
-      benefit: "Respectful by default",
+      benefit: "Optimized for high open rates",
     },
     {
-      title: "Recovered Revenue Tracking",
+      title: "Revenue Tracking",
       description:
-        "See exactly which customers were mended and how much revenue was recovered.",
+        "Track exactly how much revenue has been mended and saved to your account.",
       icon: <BarChart3 className="h-6 w-6" />,
-      benefit: "Clear ROI, no guesswork",
+      benefit: "Clear, measurable ROI",
     },
   ]
 
@@ -39,15 +39,15 @@ export default function Features() {
         {/* Header */}
         <div className="mx-auto mb-16 max-w-3xl text-center">
           <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-            Designed for SaaS revenue
+            SaaS Revenue Recovery
           </span>
           <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
             Recover revenue without
-            <span className="block text-slate-700">changing how you work</span>
+            <span className="block text-slate-700">lifting a finger</span>
           </h2>
           <p className="mt-5 text-base text-slate-600">
-            Mend runs quietly in the background, fixing failed payments
-            while you focus on building your product.
+            Mend quietly fixes failed payments via automated emails 
+            so you can stay focused on building.
           </p>
         </div>
 

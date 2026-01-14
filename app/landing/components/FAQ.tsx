@@ -8,27 +8,22 @@ export function FAQ() {
     {
       question: "Is Mend really free to use?",
       answer:
-        "Yes. Mend has no monthly fee. We only take a small percentage of revenue that we successfully recover. If nothing is recovered, you pay nothing.",
+        "Yes. There are no monthly fees. We only take a 10% commission on revenue we successfully recover for you.",
     },
     {
-      question: "How does Mend know when a payment fails?",
+      question: "How does Mend track payments?",
       answer:
-        "Mend connects securely to your Stripe account and listens for failed payment events in real time. No manual setup or monitoring is required.",
+        "Mend securely connects to your Stripe account and monitors failed payment events in real-time. Setup takes minutes.",
     },
     {
-      question: "Will this annoy my customers?",
+      question: "Will this bother my customers?",
       answer:
-        "No. Mend is designed to be respectful by default. We send a single, calm email first. Only if that’s ignored do we send one brief mobile nudge — and then we stop.",
+        "No. Mend sends calm, personal emails designed to be helpful. We focus on fixing billing issues, not pestering users.",
     },
     {
-      question: "Can I control when messages are sent?",
+      question: "How is Mend different from dunning tools?",
       answer:
-        "Yes. Mend respects quiet hours and avoids contacting customers at night. You can also disable SMS or WhatsApp entirely if you prefer email-only recovery.",
-    },
-    {
-      question: "What makes Mend different from other dunning tools?",
-      answer:
-        "Most tools send automated billing reminders. Mend acts like a thoughtful human follow-up — written in your voice, sent only when necessary, and focused on fixing genuine issues rather than chasing payments.",
+        "Standard tools send cold billing reminders. Mend uses human-sounding emails written in your voice to recover revenue personally.",
     },
   ]
 

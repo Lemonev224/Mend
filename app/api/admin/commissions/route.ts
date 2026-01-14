@@ -1,6 +1,34 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/backend/supabaseClient'
 
+interface Commission {
+  id: string
+  user_id: string
+  user_email: string
+  commission_amount: number
+  amount_recovered: number
+  status: 'pending' | 'invoiced' | 'paid'
+  period_start: string
+  period_end: string
+  stripe_invoice_id: string | null
+  created_at: string
+  paid_at: string | null
+  invoice_sent_at: string | null
+}
+
+interface UserSummary {
+  user_id: string
+  user_name: string
+  user_email: string
+  total_owed: number // Total commission amount (in cents)
+  pending_amount: number
+  invoiced_amount: number
+  paid_amount: number
+  last_invoice_sent: string | null
+  commission_count: number
+  individual_commissions: Commission[] // Keep individual commissions for detail view
+}
+
 export async function GET(request: Request) {
   try {
     console.log('Admin commissions API called')
@@ -21,12 +49,13 @@ export async function GET(request: Request) {
     if (!commissions || commissions.length === 0) {
       return NextResponse.json({ 
         success: true,
-        commissions: [],
+        userSummaries: [],
         stats: {
           totalOwed: 0,
           pendingCount: 0,
           invoicedCount: 0,
-          paidCount: 0
+          paidCount: 0,
+          userCount: 0
         }
       })
     }
@@ -41,7 +70,6 @@ export async function GET(request: Request) {
 
     if (userDetailsError) {
       console.error('Error fetching user details:', userDetailsError)
-      // Continue with placeholders if error
     }
 
     // Create user map from user_details
@@ -53,8 +81,12 @@ export async function GET(request: Request) {
       })
     })
 
-    // Combine data - use email from commissions if available, otherwise from user_details
-    const commissionsWithUsers = commissions.map(commission => {
+    // Group commissions by user
+    const userSummaries = new Map<string, UserSummary>()
+
+    commissions.forEach(commission => {
+      const userId = commission.user_id
+      
       // Try to get email from multiple sources
       let userEmail = commission.user_email
       let userName = 'User'
@@ -70,11 +102,29 @@ export async function GET(request: Request) {
         userName = userDetail?.name || commission.user_email?.split('@')[0] || 'User'
       }
 
-      return {
+      // Initialize user summary if not exists
+      if (!userSummaries.has(userId)) {
+        userSummaries.set(userId, {
+          user_id: userId,
+          user_name: userName,
+          user_email: userEmail,
+          total_owed: 0,
+          pending_amount: 0,
+          invoiced_amount: 0,
+          paid_amount: 0,
+          last_invoice_sent: null,
+          commission_count: 0,
+          individual_commissions: []
+        })
+      }
+
+      const userSummary = userSummaries.get(userId)!
+      
+      // Add to individual commissions
+      userSummary.individual_commissions.push({
         id: commission.id,
         user_id: commission.user_id,
         user_email: userEmail,
-        user_name: userName,
         commission_amount: commission.commission_amount || 0,
         amount_recovered: commission.amount_recovered || 0,
         status: commission.status || 'pending',
@@ -84,22 +134,52 @@ export async function GET(request: Request) {
         created_at: commission.created_at,
         paid_at: commission.paid_at,
         invoice_sent_at: commission.invoice_sent_at
+      })
+
+      // Update totals
+      userSummary.commission_count += 1
+      
+      if (commission.status === 'pending') {
+        userSummary.pending_amount += commission.commission_amount || 0
+      } else if (commission.status === 'invoiced') {
+        userSummary.invoiced_amount += commission.commission_amount || 0
+      } else if (commission.status === 'paid') {
+        userSummary.paid_amount += commission.commission_amount || 0
+      }
+
+      // Add to total owed (pending + invoiced, not paid)
+      if (commission.status !== 'paid') {
+        userSummary.total_owed += commission.commission_amount || 0
+      }
+
+      // Update last invoice sent date
+      if (commission.invoice_sent_at) {
+        const invoiceDate = new Date(commission.invoice_sent_at)
+        const currentLastDate = userSummary.last_invoice_sent ? 
+          new Date(userSummary.last_invoice_sent) : null
+        
+        if (!currentLastDate || invoiceDate > currentLastDate) {
+          userSummary.last_invoice_sent = commission.invoice_sent_at
+        }
       }
     })
 
-    // Calculate stats
+    // Convert Map to array and sort by total owed (highest first)
+    const userSummariesArray = Array.from(userSummaries.values())
+      .sort((a, b) => b.total_owed - a.total_owed)
+
+    // Calculate global stats
     const stats = {
-      totalOwed: commissionsWithUsers
-        .filter(c => c.status !== 'paid')
-        .reduce((sum, c) => sum + (c.commission_amount / 100), 0),
-      pendingCount: commissionsWithUsers.filter(c => c.status === 'pending').length,
-      invoicedCount: commissionsWithUsers.filter(c => c.status === 'invoiced').length,
-      paidCount: commissionsWithUsers.filter(c => c.status === 'paid').length
+      totalOwed: userSummariesArray.reduce((sum, user) => sum + (user.total_owed / 100), 0),
+      pendingCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'pending').length, 0),
+      invoicedCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'invoiced').length, 0),
+      paidCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'paid').length, 0),
+      userCount: userSummariesArray.length
     }
 
     return NextResponse.json({ 
       success: true,
-      commissions: commissionsWithUsers,
+      userSummaries: userSummariesArray,
       stats
     })
 

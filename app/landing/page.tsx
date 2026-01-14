@@ -8,6 +8,7 @@ import Pricing from "./components/Pricing"
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser } from '@/lib/backend/auth/auth'
+import { FAQ } from "./components/FAQ"
 
 
 
@@ -35,6 +36,7 @@ export default function LandingPage() {
       <Features />
       <HowItWorks />
       <Pricing />
+      <FAQ />
       <FinalCTA />
         <Footer />
     </div>

@@ -62,7 +62,7 @@ export default function GoodbyePage() {
           </Button>
           
           <Button variant="outline" asChild className="w-full">
-            <a href="mailto:support@mend.com">
+            <a href="mailto:contact@advisorly.uk">
               Contact Support
             </a>
           </Button>

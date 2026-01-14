@@ -45,6 +45,14 @@ export default function Layout({ children }: { children: ReactNode }) {
             <span className="text-sm text-slate-500">
               Revenue Recovery
             </span>
+              <a
+    href="mailto:contact@advisorly.uk?subject=Mend%20Support%20Request"
+    className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1 rounded hover:bg-slate-100"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Support
+  </a>
             <button
               onClick={handleLogout}
               className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1 rounded hover:bg-slate-100"

@@ -20,7 +20,7 @@ export function FinalCTA() {
               className="bg-white text-slate-900 hover:bg-slate-100"
               asChild
             >
-              <a href="/signup">Connect Stripe</a>
+              <a href="/sign-up">Connect Stripe</a>
             </Button>
 
             <Button
@@ -28,7 +28,7 @@ export function FinalCTA() {
               className="border border-white/70 bg-transparent text-white hover:bg-white/10"
               asChild
             >
-              <a href="/how-it-works">See how Mend works</a>
+              <a href="#how-it-works">See how Mend works</a>
             </Button>
           </div>
 

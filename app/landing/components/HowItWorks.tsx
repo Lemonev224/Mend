@@ -1,44 +1,45 @@
-import { CheckCircle2, Zap, Mail, MessageSquare } from "lucide-react"
+import { CheckCircle2, Zap, Mail, BarChart3 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export default function HowItWorks() {
   const steps = [
     {
       step: "01",
-      title: "Listen for Failed Payments",
+      title: "Real-time Monitoring",
       description:
-        "Mend connects to Stripe and listens for failed invoices in real time.",
+        "Mend connects to Stripe to catch failed payments the second they happen.",
       features: [
-        "Stripe webhook integration",
-        "No code required",
-        "Instant detection",
+        "Secure Stripe integration",
+        "Instant error detection",
+        "Zero-code setup",
       ],
       icon: <Zap className="h-5 w-5" />,
     },
     {
       step: "02",
-      title: "Send a Human Follow-Up",
+      title: "Personal Outreach",
       description:
-        "A calm, personal email is sent in your voice — not a billing template.",
+        "A personal, founder-style email is sent to help the customer fix their billing.",
       features: [
-        "Founder-style tone",
-        "Personalized context",
-        "Email-first by default",
+        "Human-sounding tone",
+        "Email-first approach",
+        "Automated follow-ups",
       ],
       icon: <Mail className="h-5 w-5" />,
     },
     {
       step: "03",
-      title: "Recover or Stop",
+      title: "Revenue Restored",
       description:
-        "If ignored, Mend sends one respectful mobile nudge — then stops.",
+        "Mend tracks the recovery and syncs the successful payment back to Stripe.",
       features: [
-        "SMS / WhatsApp fallback",
-        "Quiet hours respected",
-        "One-message rule",
+        "Hands-off recovery",
+        "Success tracking",
+        "No manual data entry",
       ],
-      icon: <MessageSquare className="h-5 w-5" />,
+      icon: <BarChart3 className="h-5 w-5" />,
     },
   ]
 
@@ -57,8 +58,8 @@ export default function HowItWorks() {
             <span className="block text-slate-700">Mend does the rest.</span>
           </h2>
           <p className="mt-5 text-base text-slate-600">
-            No dashboards to babysit. No workflows to manage.
-            Mend only acts when revenue is at risk.
+            Mend only acts when revenue is at risk, so you never have to
+            babysit a dashboard.
           </p>
         </div>
 
@@ -102,7 +103,7 @@ export default function HowItWorks() {
         {/* CTA */}
         <div className="mt-16 text-center">
           <Button size="lg" className="h-11 px-8 bg-slate-900 hover:bg-black transition-all duration-300 hover:scale-105 hover:shadow-lg">
-            Start recovering revenue
+           <Link href="/sign-up">Start recovering revenue</Link>
           </Button>
           <p className="mt-3 text-sm text-slate-500">
             No setup fees • Connect Stripe in minutes

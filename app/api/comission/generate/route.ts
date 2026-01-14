@@ -5,6 +5,12 @@ import { supabase } from '@/lib/backend/supabaseClient';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(request: Request) {
+
+    return NextResponse.json({ 
+    disabled: true,
+    message: 'Automatic invoicing is disabled. Use the manual admin dashboard at /admin/comissions',
+    manualDashboard: '/admin/comissions'
+  }, { status: 400 });
   try {
     const { month, year, user_id } = await request.json();
     
