@@ -201,6 +201,7 @@ export async function POST(req: Request) {
             const commissionRecord = {
               user_id: stripeAccount.user_id,
               stripe_account_id: stripeAccountId,
+              user_email: recovery.customer_email || 'unknown@example.com', 
               recovery_id: recovery.id,
               amount_recovered: amount_recovered,
               commission_percentage: commission_percentage,
