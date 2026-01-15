@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,6 @@ import { supabase } from '@/lib/backend/supabaseClient'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,16 +19,28 @@ export default function ResetPasswordPage() {
   const [accessToken, setAccessToken] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check if we have a token in the URL (from Supabase reset email)
-    const hash = window.location.hash
-    if (hash) {
-      const params = new URLSearchParams(hash.substring(1))
-      const token = params.get('access_token')
-      const type = params.get('type')
+    // Check URL for reset token (both hash and query params)
+    const getTokenFromUrl = () => {
+      // Check query parameters first
+      const searchParams = new URLSearchParams(window.location.search)
+      let token = searchParams.get('token') || searchParams.get('access_token')
+      let type = searchParams.get('type')
+      
+      // If not in query, check hash
+      if (!token && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        token = hashParams.get('token') || hashParams.get('access_token')
+        type = hashParams.get('type')
+      }
       
       if (type === 'recovery' && token) {
         setAccessToken(token)
       }
+    }
+
+    // Only run on client side
+    if (typeof window !== 'undefined') {
+      getTokenFromUrl()
     }
   }, [])
 
@@ -59,6 +70,12 @@ export default function ResetPasswordPage() {
         if (error) throw error
       } else {
         // For direct access, user needs to be logged in
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          throw new Error('You must be logged in or use the reset link from your email')
+        }
+
         const { error } = await supabase.auth.updateUser({
           password: password
         })
