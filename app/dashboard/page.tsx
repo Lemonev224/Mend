@@ -38,6 +38,50 @@ interface CommissionRecord {
 
 export default function DashboardPage() {
   const router = useRouter()
+
+useEffect(() => {
+  const checkForReset = async () => {
+    // Only run on client side
+    if (typeof window === 'undefined') return
+    
+    console.log('🔍 Dashboard reset check running...')
+    
+    // Check if we should redirect to reset-password
+    const resetFlag = localStorage.getItem('force_password_reset')
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    console.log('Dashboard reset check:', { 
+      resetFlag, 
+      hasSession: !!session,
+      // Use last_sign_in_at from the user object instead of created_at on the session
+      lastSignIn: session?.user?.last_sign_in_at 
+    })
+    
+    if (resetFlag === 'true' && session?.user?.last_sign_in_at) {
+      // Calculate age based on the last time the user signed in
+      const lastSignInTime = new Date(session.user.last_sign_in_at).getTime()
+      const sessionAge = Date.now() - lastSignInTime
+      const isFreshSession = sessionAge < 300000 // 5 minutes
+      
+      console.log('Session age (ms):', sessionAge, 'Fresh?', isFreshSession)
+      
+      if (isFreshSession) {
+        console.log('✅ Redirecting to password reset - fresh session detected')
+        localStorage.removeItem('force_password_reset')
+        router.push('/reset-password')
+        return 
+      } else {
+        console.log('❌ Session too old, clearing flag')
+        localStorage.removeItem('force_password_reset')
+      }
+    } else if (resetFlag === 'true' && !session) {
+       console.log('❌ Reset flag present but no active session found')
+    }
+  }
+  
+  checkForReset()
+}, [router])
+
   const [stats, setStats] = useState({
     recoveredThisMonth: 0,
     recoveryRate: 0,
