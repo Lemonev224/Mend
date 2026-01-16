@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { generateMendMessage } from '@/lib/groq';
-import { sendRecoveryEmail } from '@/lib/resend';
+import { sendRecoveryEmail } from '@/lib/sendgrid';;
 import { supabase } from '@/lib/backend/supabaseClient';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { 

@@ -1,0 +1,5408 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+app/admin/comissions/page.tsx
+app/api/account/delete/route.ts
+app/api/admin/commissions/route.ts
+app/api/admin/mark-invoiced/route.ts
+app/api/admin/mark-paid/route.ts
+app/api/comission/generate/route.ts
+app/api/connect/route.ts
+app/api/test/email/route.ts
+app/api/test/mark-recovered/route.ts
+app/api/webhooks/stripe/route.ts
+app/connect-stripe/page.tsx
+app/dashboard/components/ActivityTable.tsx
+app/dashboard/components/DashboardHeader.tsx
+app/dashboard/components/DeleteAccount.tsx
+app/dashboard/components/RevenueStat.tsx
+app/dashboard/components/TrustPanle.tsx
+app/dashboard/components/WebhookMonitor.tsx
+app/dashboard/layout.tsx
+app/dashboard/page.tsx
+app/dashboard/recoveries/page.tsx
+app/favicon.ico
+app/forgot-password/page.tsx
+app/globals.css
+app/goodbye/page.tsx
+app/landing/components/CTA.tsx
+app/landing/components/FAQ.tsx
+app/landing/components/Features.tsx
+app/landing/components/Footer.tsx
+app/landing/components/Hero.tsx
+app/landing/components/HowItWorks.tsx
+app/landing/components/Pricing.tsx
+app/landing/page.tsx
+app/layout.tsx
+app/login/page.tsx
+app/page.tsx
+app/reset-password/page.tsx
+app/sign-up/page.tsx
+components.json
+components/layout.tsx
+components/ui/button.tsx
+components/ui/card.tsx
+components/ui/dialog.tsx
+components/ui/input.tsx
+components/ui/label.tsx
+components/ui/MetricCard.tsx
+eslint.config.mjs
+lib/backend/auth/auth.ts
+lib/backend/supabaseClient.ts
+lib/groq.ts
+lib/resend.ts
+lib/utils.ts
+next.config.ts
+package.json
+postcss.config.mjs
+public/file.svg
+public/globe.svg
+public/icon.svg
+public/next.svg
+public/vercel.svg
+public/window.svg
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="app/api/account/delete/route.ts">
+// app/api/account/delete/route.ts
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/backend/supabaseClient';
+
+export async function POST(request: Request) {
+  try {
+    // Parse request body
+    let userId;
+    try {
+      const body = await request.json();
+      userId = body.userId;
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return NextResponse.json({ 
+        error: 'Invalid request body',
+        details: 'Expected JSON with userId field'
+      }, { status: 400 });
+    }
+    
+    if (!userId) {
+      return NextResponse.json({ 
+        error: 'User ID required',
+        details: 'Please provide userId in request body'
+      }, { status: 400 });
+    }
+
+    console.log('Starting account deletion for user:', userId);
+
+    // Check pending commissions
+    const { data: pendingCommissions, error: commissionError } = await supabase
+      .from('commissions')
+      .select('commission_amount, status')
+      .eq('user_id', userId)
+      .eq('status', 'pending');
+
+    if (commissionError) {
+      console.error('Error checking commissions:', commissionError);
+    }
+
+    const pendingAmount = pendingCommissions?.reduce((sum, c) => sum + (c.commission_amount / 100), 0) || 0;
+
+    if (pendingAmount > 0) {
+      return NextResponse.json({ 
+        error: 'Cannot delete account with pending commissions',
+        pending_amount: pendingAmount,
+        commission_count: pendingCommissions?.length,
+        message: `You have $${pendingAmount.toFixed(2)} in pending commissions.`
+      }, { status: 400 });
+    }
+
+    // Soft delete user data
+    const now = new Date().toISOString();
+
+    // Mark Stripe account for deletion
+    const { error: stripeError } = await supabase
+      .from('stripe_accounts')
+      .update({ 
+        deleted_at: now,
+        delete_requested_at: now
+      })
+      .eq('user_id', userId);
+
+    if (stripeError) {
+      console.error('Error deleting stripe account:', stripeError);
+    }
+
+    // Mark recoveries as deleted
+    const { error: recoveryError } = await supabase
+      .from('recoveries')
+      .update({ deleted_at: now })
+      .eq('user_id', userId);
+
+    if (recoveryError) {
+      console.error('Error deleting recoveries:', recoveryError);
+    }
+
+    // Mark commissions as deleted
+    const { error: commissionUpdateError } = await supabase
+      .from('commissions')
+      .update({ deleted_at: now })
+      .eq('user_id', userId);
+
+    if (commissionUpdateError) {
+      console.error('Error deleting commissions:', commissionUpdateError);
+    }
+
+    console.log('✅ Account marked for deletion:', userId);
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Account deletion initiated successfully.',
+      userId: userId,
+      note: 'Your data will be permanently deleted in 30 days.'
+    });
+
+  } catch (error: any) {
+    console.error('Account deletion error:', error);
+    return NextResponse.json({ 
+      error: 'Failed to delete account',
+      details: error.message 
+    }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'ready',
+    instructions: 'POST with { "userId": "user-id-here" }'
+  });
+}
+</file>
+
+<file path="app/api/admin/mark-invoiced/route.ts">
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export async function POST(request: Request) {
+  try {
+    const { commissionId, userId } = await request.json()
+    
+    if (!commissionId || !userId) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'Missing commissionId or userId' 
+      }, { status: 400 })
+    }
+
+    console.log('Marking as invoiced:', { commissionId, userId })
+
+    const { error } = await supabase
+      .from('commissions')
+      .update({ 
+        status: 'invoiced',
+        invoice_sent_at: new Date().toISOString()
+      })
+      .eq('id', commissionId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('Error marking as invoiced:', error)
+      throw error
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Commission marked as invoiced'
+    })
+
+  } catch (error: any) {
+    console.error('Mark invoiced error:', error)
+    return NextResponse.json({ 
+      success: false,
+      error: 'Failed to update commission',
+      details: error.message 
+    }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/admin/mark-paid/route.ts">
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export async function POST(request: Request) {
+  try {
+    const { commissionId, userId } = await request.json()
+    
+    if (!commissionId || !userId) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'Missing commissionId or userId' 
+      }, { status: 400 })
+    }
+
+    console.log('Marking as paid:', { commissionId, userId })
+
+    const { error } = await supabase
+      .from('commissions')
+      .update({ 
+        status: 'paid',
+        paid_at: new Date().toISOString()
+      })
+      .eq('id', commissionId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('Error marking as paid:', error)
+      throw error
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Commission marked as paid'
+    })
+
+  } catch (error: any) {
+    console.error('Mark paid error:', error)
+    return NextResponse.json({ 
+      success: false,
+      error: 'Failed to update commission',
+      details: error.message 
+    }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/connect/route.ts">
+// app/api/stripe/connect/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  
+})
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const code = searchParams.get('code')
+  const state = searchParams.get('state') // user ID
+  const error = searchParams.get('error')
+  const errorDescription = searchParams.get('error_description')
+
+  if (error) {
+    console.error('Stripe Connect error:', error, errorDescription)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=${error}`)
+  }
+
+  if (!code || !state) {
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=missing_params`)
+  }
+
+  try {
+    // Exchange code for Stripe account ID
+    const response = await stripe.oauth.token({
+      grant_type: 'authorization_code',
+      code
+    })
+
+    const stripeAccountId = response.stripe_user_id
+
+    if (!stripeAccountId) {
+      throw new Error('No Stripe account ID returned')
+    }
+
+    // Get account details
+    const account = await stripe.accounts.retrieve(stripeAccountId)
+    
+    // Store Stripe account in Supabase
+    const { error: dbError } = await supabase
+      .from('stripe_accounts')
+      .upsert({
+        user_id: state,
+        stripe_account_id: stripeAccountId,
+        account_details: account, // Store full account details
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
+      })
+
+    if (dbError) {
+      console.error('Failed to store Stripe account:', dbError)
+      throw dbError
+    }
+
+    // Set up webhook for this account (you might need to do this via Stripe dashboard instead)
+    // But for MVP, we can use the platform webhook
+
+    // Redirect to success page or dashboard
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard?connected=true`)
+
+  } catch (error) {
+    console.error('Stripe Connect callback error:', error)
+    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=connection_failed`)
+  }
+}
+</file>
+
+<file path="app/api/test/email/route.ts">
+import { NextResponse } from 'next/server';
+import { sendRecoveryEmail } from '@/lib/resend';
+
+export async function POST(request: Request) {
+  try {
+    const { email = 'delivered@resend.dev' } = await request.json();
+    
+    const testMessage = `Hi Alex, just a quick heads-up that your payment for $49.00 didn't go through. It's usually just an expired card — you can update it here when you have a moment.`;
+    
+    await sendRecoveryEmail(email, testMessage);
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Test email sent! Check your inbox.' 
+    });
+  } catch (error: any) {
+    console.error('Test email error:', error);
+    return NextResponse.json({ 
+      error: error.message,
+      details: error 
+    }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'ready',
+    instructions: 'POST with { "email": "your-email@example.com" }'
+  });
+}
+</file>
+
+<file path="app/api/test/mark-recovered/route.ts">
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/backend/supabaseClient';
+
+export async function POST(request: Request) {
+  try {
+    const { invoiceId, amount = 2000 } = await request.json();
+    
+    if (!invoiceId) {
+      return NextResponse.json({ error: 'Missing invoiceId' }, { status: 400 });
+    }
+
+    console.log('Marking as recovered:', invoiceId);
+
+    const { data, error } = await supabase
+      .from('recoveries')
+      .update({ 
+        status: 'recovered',
+        recovered_at: new Date().toISOString(),
+        amount_due: amount
+      })
+      .eq('stripe_invoice_id', invoiceId)
+      .select();
+
+    if (error) {
+      console.error('Failed to update recovery:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Marked as recovered',
+      data 
+    });
+  } catch (error: any) {
+    return NextResponse.json({ 
+      error: error.message 
+    }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/connect-stripe/page.tsx">
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Button } from "@/components/ui/button"
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export default function ConnectStripe() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    checkIfAlreadyConnected()
+  }, [])
+
+  async function checkIfAlreadyConnected() {
+    try {
+      const user = await getCurrentUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      const { data: stripeAccount, error } = await supabase
+        .from('stripe_accounts')
+        .select('stripe_account_id')
+        .eq('user_id', user.id)
+        .single()
+
+      if (stripeAccount && !error) {
+        router.push('/dashboard')
+        return
+      }
+
+      setLoading(false)
+    } catch (error) {
+      console.error('Failed to check Stripe connection:', error)
+      setLoading(false)
+    }
+  }
+
+  const initiateStripeConnect = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      const clientId = process.env.NEXT_PUBLIC_STRIPE_CLIENT_ID
+      const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/connect`
+      const state = user.id
+    
+      const authUrl = new URL('https://connect.stripe.com/oauth/authorize')
+      authUrl.searchParams.append('response_type', 'code')
+      authUrl.searchParams.append('client_id', clientId!)
+      authUrl.searchParams.append('scope', 'read_write')
+      authUrl.searchParams.append('redirect_uri', redirectUri)
+      authUrl.searchParams.append('state', state)
+      authUrl.searchParams.append('stripe_user[email]', user.email!)
+    
+      window.location.href = authUrl.toString()
+    } catch (error) {
+      console.error('Failed to initiate Stripe Connect:', error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 mx-auto"></div>
+          <p className="mt-2 text-slate-600">Checking...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-white flex items-center justify-center px-6">
+      <div className="max-w-md text-center">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+          Connect your Stripe account
+        </h1>
+
+        <p className="mt-3 text-slate-600 leading-relaxed">
+          Mend needs read-only access to detect failed payments and recover revenue
+          on your behalf.
+        </p>
+
+        <div className="mt-6">
+          <Button size="lg" className="w-full" onClick={initiateStripeConnect}>
+            Connect Stripe
+          </Button>
+        </div>
+
+        <p className="mt-4 text-xs text-slate-500">
+          We never create charges or modify customers.
+          Disconnect anytime.
+        </p>
+        
+        {/* Optional: Keep test button for development only */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 pt-4 border-t">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={async () => {
+                try {
+                  const user = await getCurrentUser()
+                  if (!user) {
+                    router.push('/login')
+                    return
+                  }
+
+                  const mockStripeAccount = {
+                    user_id: user.id,
+                    stripe_account_id: 'acct_mock_' + user.id,
+                    account_details: {
+                      id: 'acct_mock',
+                      object: 'account',
+                      business_profile: {
+                        name: 'Mock Business',
+                        support_email: user.email
+                      }
+                    },
+                    updated_at: new Date().toISOString()
+                  }
+
+                  const { error } = await supabase
+                    .from('stripe_accounts')
+                    .upsert(mockStripeAccount, {
+                      onConflict: 'user_id'
+                    })
+
+                  if (error) {
+                    console.error('Failed to create mock Stripe account:', error)
+                    return
+                  }
+
+                  router.push('/dashboard?connected=true')
+                } catch (error) {
+                  console.error('Test connect error:', error)
+                }
+              }}
+            >
+              Test Connect (Dev Only)
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/dashboard/components/ActivityTable.tsx">
+// app/dashboard/components/ActivityTable.tsx
+interface Recovery {
+  customer_email: string;
+  issue: string;
+  channel: string;
+  result: string;
+  amount: string;
+}
+
+interface ActivityTableProps {
+  recoveries: Recovery[];
+}
+
+export default function ActivityTable({ recoveries }: ActivityTableProps) {
+  if (!recoveries || recoveries.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+        No recovery activity yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white">
+      <div className="border-b px-6 py-4">
+        <h2 className="text-sm font-medium text-slate-900">
+          Recent activity
+        </h2>
+      </div>
+
+      <div className="divide-y">
+        {recoveries.map((row, index) => (
+          <div
+            key={index}
+            className="grid grid-cols-5 gap-4 px-6 py-4 text-sm"
+          >
+            <span className="text-slate-900">{row.customer_email}</span>
+            <span className="text-slate-600">{row.issue}</span>
+            <span className="text-slate-600">{row.channel}</span>
+            <span className="text-slate-900">{row.result}</span>
+            <span className="text-right text-slate-900">
+              {row.amount}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/dashboard/components/DashboardHeader.tsx">
+// app/dashboard/components/DashboardHeader.tsx
+export default function DashboardHeader() {
+  return (
+    <div>
+      <h1 className="text-2xl font-semibold tracking-tight">
+        Revenue Recovery
+      </h1>
+      <p className="mt-1 text-sm text-slate-500">
+        Mend is quietly fixing failed payments in the background.
+      </p>
+    </div>
+  )
+}
+</file>
+
+<file path="app/dashboard/components/DeleteAccount.tsx">
+// app/dashboard/components/DeleteAccount.tsx
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { AlertTriangle, Loader2, Trash2 } from "lucide-react"
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export default function DeleteAccount() {
+  const router = useRouter()
+  const [isMounted, setIsMounted] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [confirmation, setConfirmation] = useState('')
+  const [deletionInfo, setDeletionInfo] = useState<{
+    pendingCommissions?: number
+    commissionCount?: number
+  } | null>(null)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  // Don't render dialog on server
+  if (!isMounted) {
+    return (
+      <Button 
+        variant="outline" 
+        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+        disabled
+      >
+        <Trash2 className="h-4 w-4 mr-2" />
+        Delete Account
+      </Button>
+    )
+  }
+
+  const checkDeletionEligibility = async () => {
+    try {
+      const response = await fetch('/api/account/delete', { 
+        method: 'GET',
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data.pending_amount) {
+        setDeletionInfo({
+          pendingCommissions: data.pending_amount,
+          commissionCount: data.commission_count
+        })
+      }
+    } catch (error) {
+      console.error('Failed to check eligibility:', error)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (confirmation !== 'DELETE') {
+      setError('Please type "DELETE" to confirm')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      // Get current user
+          const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      throw new Error('You must be logged in to delete your account')
+    }
+
+    console.log('User ID:', user.id)
+    console.log('User email:', user.email)
+    
+
+      console.log('Attempting to delete account for user:', user.id)
+
+      const response = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to delete account')
+      }
+
+      console.log('Delete successful, signing out...')
+
+      // Success - sign out and redirect
+      await supabase.auth.signOut()
+      router.push('/goodbye')
+      setOpen(false)
+
+    } catch (error: any) {
+      setError(error.message)
+      console.error('Delete error:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleDelete()
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button 
+          variant="outline" 
+          className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+          onClick={checkDeletionEligibility}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete Account
+        </Button>
+      </DialogTrigger>
+      
+      <DialogContent className="sm:max-w-[500px]" onInteractOutside={(e) => e.preventDefault()}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center text-red-600">
+            <AlertTriangle className="h-5 w-5 mr-2" />
+            Delete Your Account
+          </DialogTitle>
+          <DialogDescription>
+            This action cannot be undone. All your data will be permanently deleted.
+          </DialogDescription>
+        </DialogHeader>
+
+        {deletionInfo?.pendingCommissions ? (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
+              <div>
+                <h4 className="font-medium text-yellow-800">Pending Commissions</h4>
+                <p className="text-sm text-yellow-700 mt-1">
+                  You have ${deletionInfo.pendingCommissions.toFixed(2)} in pending commissions 
+                  ({deletionInfo.commissionCount} payment{deletionInfo.commissionCount !== 1 ? 's' : ''}).
+                  These must be paid out before you can delete your account.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <h4 className="font-medium text-red-800 mb-2">What will be deleted:</h4>
+              <ul className="text-sm text-red-700 space-y-1 list-disc pl-4">
+                <li>Your Stripe connection & API keys</li>
+                <li>Recovery history and statistics</li>
+                <li>Commission records</li>
+                <li>All personal information</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm" className="text-red-600">
+                Type "DELETE" to confirm
+              </Label>
+              <Input
+                id="confirm"
+                placeholder="DELETE"
+                value={confirmation}
+                onChange={(e) => {
+                  setConfirmation(e.target.value)
+                  setError('')
+                }}
+                onKeyDown={handleKeyDown}
+                className={error ? 'border-red-500' : ''}
+                autoComplete="off"
+              />
+              {error && (
+                <p className="text-sm text-red-600">{error}</p>
+              )}
+            </div>
+
+            <div className="text-sm text-slate-600 space-y-2">
+              <p className="font-medium">Important notes:</p>
+              <ul className="list-disc pl-4 space-y-1">
+                <li>Your data will be permanently deleted after 30 days</li>
+                <li>You can contact support within 30 days to restore your account</li>
+                <li>Any pending commissions will be forfeited</li>
+                <li>This action is irreversible after 30 days</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {!deletionInfo?.pendingCommissions && (
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOpen(false)
+                setConfirmation('')
+                setError('')
+              }}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={loading || confirmation !== 'DELETE'}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete Account Permanently'
+              )}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+</file>
+
+<file path="app/dashboard/components/RevenueStat.tsx">
+// app/dashboard/components/RevenueStat.tsx
+export default function RevenueStat() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8">
+      <p className="text-sm text-slate-500">
+        Recovered this month
+      </p>
+
+      <div className="mt-2 text-4xl font-semibold tracking-tight">
+        $1,284
+      </div>
+
+      <p className="mt-2 text-sm text-slate-600">
+        from 23 failed invoices
+      </p>
+    </div>
+  )
+}
+</file>
+
+<file path="app/dashboard/components/TrustPanle.tsx">
+// app/dashboard/components/TrustPanel.tsx
+export default function TrustPanel() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6">
+      <h3 className="text-sm font-medium text-slate-900">
+        Customer experience
+      </h3>
+
+      <ul className="mt-4 space-y-3 text-sm">
+        <li className="flex justify-between text-slate-600">
+          <span>Avg messages sent</span>
+          <span className="text-slate-900">1.2</span>
+        </li>
+        <li className="flex justify-between text-slate-600">
+          <span>SMS used</span>
+          <span className="text-slate-900">18%</span>
+        </li>
+        <li className="flex justify-between text-slate-600">
+          <span>Complaints</span>
+          <span className="text-slate-900">0</span>
+        </li>
+      </ul>
+    </div>
+  )
+}
+</file>
+
+<file path="app/dashboard/components/WebhookMonitor.tsx">
+// app/dashboard/components/WebhookMonitor.tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+interface WebhookLog {
+  id: string
+  event_type: string
+  stripe_event_id: string
+  status: string
+  error_message: string | null
+  created_at: string
+}
+
+export default function WebhookMonitor() {
+  const [logs, setLogs] = useState<WebhookLog[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({
+    total: 0,
+    success: 0,
+    failed: 0,
+    recentFailures: 0
+  })
+
+  useEffect(() => {
+    loadWebhookLogs()
+  }, [])
+
+  async function loadWebhookLogs() {
+    try {
+      setLoading(true)
+      
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError || !userData.user) {
+        console.error("No user found:", userError)
+        return
+      }
+
+      // Get user's Stripe account
+      const { data: stripeAccount, error: stripeError } = await supabase
+        .from('stripe_accounts')
+        .select('stripe_account_id')
+        .eq('user_id', userData.user.id)
+        .single()
+
+      if (stripeError || !stripeAccount) {
+        console.error("No Stripe account found:", stripeError)
+        return
+      }
+
+      // Get webhook logs
+      const { data: logsData, error: logsError } = await supabase
+        .from('webhook_logs')
+        .select('*')
+        .eq('stripe_account_id', stripeAccount.stripe_account_id)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (logsError) {
+        console.error("Error fetching webhook logs:", logsError)
+        return
+      }
+
+      setLogs(logsData || [])
+
+      // Calculate stats
+      const total = logsData?.length || 0
+      const success = logsData?.filter(log => log.status === 'processed').length || 0
+      const failed = logsData?.filter(log => log.status === 'failed').length || 0
+      
+      // Recent failures (last 24 hours)
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const recentFailures = logsData?.filter(log => 
+        log.status === 'failed' && 
+        new Date(log.created_at) > yesterday
+      ).length || 0
+
+      setStats({ total, success, failed, recentFailures })
+
+    } catch (error) {
+      console.error('Failed to load webhook logs:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-2">
+          Webhook Monitor
+        </h3>
+        <div className="text-sm text-slate-500">Loading webhook logs...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">
+            Webhook Monitor
+          </h3>
+          <p className="text-sm text-slate-500">
+            Track Stripe webhook delivery and failures
+          </p>
+        </div>
+        
+        <div className="flex gap-4 text-sm">
+          <div className="text-center">
+            <div className="text-2xl font-semibold text-green-600">
+              {stats.success}
+            </div>
+            <div className="text-slate-500">Successful</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-semibold text-red-600">
+              {stats.failed}
+            </div>
+            <div className="text-slate-500">Failed</div>
+          </div>
+        </div>
+      </div>
+
+      {stats.recentFailures > 0 && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.94-.833-2.67 0L4.198 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <span className="text-red-700 font-medium">
+              {stats.recentFailures} webhook failure{stats.recentFailures !== 1 ? 's' : ''} in last 24 hours
+            </span>
+          </div>
+        </div>
+      )}
+
+      {logs.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 font-medium text-slate-700">Event</th>
+                <th className="text-left py-2 font-medium text-slate-700">Status</th>
+                <th className="text-left py-2 font-medium text-slate-700">Time</th>
+                <th className="text-left py-2 font-medium text-slate-700">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id} className="border-b hover:bg-slate-50">
+                  <td className="py-2">
+                    <span className="font-medium text-slate-900">{log.event_type}</span>
+                    <div className="text-xs text-slate-500 truncate max-w-[150px]">
+                      {log.stripe_event_id}
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                      log.status === 'processed' ? 'bg-green-100 text-green-800' :
+                      log.status === 'failed' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {log.status}
+                    </span>
+                  </td>
+                  <td className="py-2 text-slate-600">
+                    {new Date(log.created_at).toLocaleTimeString([], { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </td>
+                  <td className="py-2">
+                    {log.error_message ? (
+                      <div className="text-red-600 text-xs max-w-[200px] truncate">
+                        {log.error_message}
+                      </div>
+                    ) : (
+                      <span className="text-slate-400 text-xs">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-slate-500">
+          <svg className="w-12 h-12 mx-auto text-slate-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <p>No webhook events yet.</p>
+          <p className="text-sm mt-1">Connect your Stripe account to start receiving events.</p>
+        </div>
+      )}
+
+      <div className="mt-4 text-right">
+        <button
+          onClick={loadWebhookLogs}
+          className="text-sm text-blue-600 hover:text-blue-800"
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/dashboard/page.tsx">
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/backend/supabaseClient'
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+import { MetricCard } from '@/components/ui/MetricCard'
+import DashboardHeader from './components/DashboardHeader'
+import RevenueStat from './components/RevenueStat'
+import TrustPanel from './components/TrustPanle'
+import WebhookMonitor from './components/WebhookMonitor'
+
+interface RecoveryRecord {
+  id: string;
+  stripe_customer_id: string;
+  stripe_invoice_id: string;
+  stripe_account_id: string;
+  amount_due: number;
+  customer_email: string;
+  customer_name: string;
+  message_sent: string;
+  status: string;
+  recovered_at: string | null;
+  created_at: string;
+}
+
+interface CommissionRecord {
+  id: string;
+  amount_recovered: number;
+  commission_amount: number;
+  commission_percentage: number;
+  status: string;
+  period_start: string;
+  period_end: string;
+  stripe_invoice_id: string | null;
+  paid_at: string | null;
+}
+
+export default function DashboardPage() {
+  const router = useRouter()
+  const [stats, setStats] = useState({
+    recoveredThisMonth: 0,
+    recoveryRate: 0,
+    pendingRecoveries: 0,
+    totalRecovered: 0,
+    mendCommission: 0,
+    commissionOwed: 0,
+    commissionPaid: 0
+  })
+  const [recentRecoveries, setRecentRecoveries] = useState<RecoveryRecord[]>([])
+  const [commissions, setCommissions] = useState<CommissionRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [hasStripeAccount, setHasStripeAccount] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  async function loadDashboardData() {
+    try {
+      setLoading(true)
+      
+      // Check authentication
+      const user = await getCurrentUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      // Check if user has Stripe account
+      const { data: stripeAccount, error: stripeError } = await supabase
+        .from('stripe_accounts')
+        .select('stripe_account_id')
+        .eq('user_id', user.id)
+        .single()
+
+      setHasStripeAccount(!!stripeAccount && !stripeError)
+      
+      if (!stripeAccount || stripeError) {
+        setLoading(false)
+        return // Will show connect stripe prompt
+      }
+
+      const stripeAccountId = stripeAccount.stripe_account_id
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      startOfMonth.setHours(0, 0, 0, 0)
+
+      // Get ALL recoveries for this account
+      const { data: allRecoveries, error: recoveriesError } = await supabase
+        .from('recoveries')
+        .select('*')
+        .eq('stripe_account_id', stripeAccountId)
+        .order('created_at', { ascending: false })
+
+      if (recoveriesError) {
+        console.error("Error fetching recoveries:", recoveriesError)
+      }
+
+      const recoveriesList = (allRecoveries as RecoveryRecord[] | null) || []
+
+      // Get commissions for this user
+      const { data: commissionData, error: commissionError } = await supabase
+        .from('commissions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (commissionError) {
+        console.error("Error fetching commissions:", commissionError)
+      }
+
+      const commissionsList = (commissionData as CommissionRecord[] | null) || []
+
+      // Calculate stats
+      const recoveredThisMonth = recoveriesList
+        .filter(r => r.status === 'recovered' && 
+          new Date(r.recovered_at || r.created_at) >= startOfMonth)
+        .reduce((sum, p) => sum + (p.amount_due / 100), 0)
+
+      const totalRecovered = recoveriesList
+        .filter(r => r.status === 'recovered')
+        .reduce((sum, p) => sum + (p.amount_due / 100), 0)
+
+      const pendingRecoveries = recoveriesList
+        .filter(r => ['pending', 'email_sent', 'test_no_email'].includes(r.status)).length
+
+      const totalAttempts = recoveriesList.length
+      const recoveredCount = recoveriesList.filter(r => r.status === 'recovered').length
+      const recoveryRate = totalAttempts > 0 ? Math.round((recoveredCount / totalAttempts) * 100) : 0
+      
+      // Calculate commission stats
+      const commissionOwed = commissionsList
+        .filter(c => c.status === 'pending' || c.status === 'invoiced')
+        .reduce((sum, c) => sum + (c.commission_amount / 100), 0)
+      
+      const commissionPaid = commissionsList
+        .filter(c => c.status === 'paid')
+        .reduce((sum, c) => sum + (c.commission_amount / 100), 0)
+
+      const mendCommission = commissionOwed + commissionPaid // Total commission (owed + paid)
+
+      setStats({
+        recoveredThisMonth,
+        recoveryRate,
+        pendingRecoveries,
+        totalRecovered,
+        mendCommission,
+        commissionOwed,
+        commissionPaid
+      })
+
+      // Set recent recoveries (last 5)
+      setRecentRecoveries(recoveriesList.slice(0, 5))
+      
+      // Set recent commissions (last 5)
+      setCommissions(commissionsList.slice(0, 5))
+
+    } catch (err: any) {
+      console.error('Failed to load dashboard data:', err)
+      if (err.message?.includes('Auth session missing')) {
+        router.push('/login')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Show loading
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 mx-auto"></div>
+          <p className="mt-2 text-slate-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show connect stripe if no Stripe account
+  if (hasStripeAccount === false) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
+            Connect your Stripe account
+          </h1>
+
+          <p className="mt-3 text-slate-600 leading-relaxed">
+            Mend needs read-only access to detect failed payments and recover revenue
+            on your behalf.
+          </p>
+
+          <div className="mt-6">
+            <button
+              onClick={() => router.push('/connect-stripe')}
+              className="w-full bg-slate-900 text-white py-3 px-4 rounded-lg hover:bg-slate-800"
+            >
+              Connect Stripe
+            </button>
+          </div>
+
+          <p className="mt-4 text-xs text-slate-500">
+            We never create charges or modify customers.
+            Disconnect anytime.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+return (
+  <div className="min-h-screen bg-white">
+    <div className="mx-auto max-w-7xl px-6 py-8">
+      <DashboardHeader />
+
+      {/* Metrics */}
+      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          title="Recovery rate"
+          value={`${stats.recoveryRate}%`}
+          trend="up"
+          change="+"
+        />
+        <MetricCard
+          title="Pending recoveries"
+          value={stats.pendingRecoveries.toString()}
+          trend="neutral"
+          change=""
+        />
+        <MetricCard
+          title="Total recovered"
+          value={`$${stats.totalRecovered.toFixed(2)}`}
+          trend="up"
+          change="+"
+        />
+      </div>
+
+      {/* Main content */}
+      <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-3">
+        {/* Left: Recoveries */}
+        <div className="lg:col-span-2">
+          <div className="rounded-2xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-sm font-medium text-slate-900">
+                Recent recovery attempts
+              </h2>
+              <span className="text-xs text-slate-500">
+                Synced from Stripe
+              </span>
+            </div>
+
+            <div className="divide-y">
+              {recentRecoveries.map((recovery) => (
+                <div
+                  key={recovery.id}
+                  className="grid grid-cols-4 items-center gap-4 px-6 py-4 text-sm"
+                >
+                  <div>
+                    <div className="font-medium text-slate-900">
+                      {recovery.customer_name || "Customer"}
+                    </div>
+                    <div className="text-xs text-slate-500 truncate">
+                      {recovery.customer_email}
+                    </div>
+                  </div>
+
+                  <div className="text-slate-700">
+                    ${(recovery.amount_due / 100).toFixed(2)}
+                  </div>
+
+                  <div className="text-slate-500">
+                    {new Date(recovery.created_at).toLocaleDateString()}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        recovery.status === "recovered"
+                          ? "bg-green-50 text-green-700"
+                          : recovery.status === "email_sent"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-yellow-50 text-yellow-700"
+                      }`}
+                    >
+                      {recovery.status.replace("_", " ")}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {recentRecoveries.length === 0 && (
+                <div className="px-6 py-10 text-center text-sm text-slate-500">
+                  No failed payments yet. Mend will appear here automatically.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Revenue chart */}
+
+        </div>
+
+        {/* Right column */}
+        <div className="space-y-6">
+          {/* Commission */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6">
+            <h3 className="text-sm font-medium text-slate-900">
+              Mend commission
+            </h3>
+
+            <div className="mt-4 flex items-baseline justify-between">
+              <div>
+                <div className="text-2xl font-semibold text-slate-900">
+                  ${stats.commissionOwed.toFixed(2)}
+                </div>
+                <p className="text-xs text-slate-500">Currently owed</p>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-slate-700">
+                  ${stats.commissionPaid.toFixed(2)}
+                </div>
+                <p className="text-xs text-slate-500">Paid</p>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-500">
+              Mend charges 10% only on successfully recovered payments.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)
+
+
+
+}
+</file>
+
+<file path="app/dashboard/recoveries/page.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/backend/supabaseClient'
+import { Button } from '@/components/ui/button'
+
+interface Recovery {
+  id: string
+  stripe_invoice_id: string
+  customer_email: string
+  customer_name: string
+  amount_due: number
+  status: string
+  created_at: string
+  recovered_at: string | null
+}
+
+export default function RecoveriesPage() {
+  const [recoveries, setRecoveries] = useState<Recovery[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadRecoveries()
+  }, [])
+
+  async function loadRecoveries() {
+    try {
+      const { data, error } = await supabase
+        .from('recoveries')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) throw error
+      setRecoveries(data || [])
+    } catch (error) {
+      console.error('Failed to load recoveries:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function markAsRecovered(invoiceId: string, amount: number) {
+    try {
+      await fetch('/api/test/mark-recovered', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId, amount })
+      })
+      loadRecoveries() // Refresh
+    } catch (error) {
+      console.error('Failed to mark as recovered:', error)
+    }
+  }
+
+  if (loading) return <div>Loading...</div>
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Recoveries</h1>
+      
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="p-3 text-left">Invoice</th>
+              <th className="p-3 text-left">Customer</th>
+              <th className="p-3 text-left">Amount</th>
+              <th className="p-3 text-left">Status</th>
+              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recoveries.map((recovery) => (
+              <tr key={recovery.id} className="border-b">
+                <td className="p-3">{recovery.stripe_invoice_id}</td>
+                <td className="p-3">
+                  <div>{recovery.customer_name}</div>
+                  <div className="text-sm text-slate-500">{recovery.customer_email}</div>
+                </td>
+                <td className="p-3">${(recovery.amount_due / 100).toFixed(2)}</td>
+                <td className="p-3">
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    recovery.status === 'recovered' ? 'bg-green-100 text-green-800' :
+                    recovery.status === 'email_sent' ? 'bg-blue-100 text-blue-800' :
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {recovery.status}
+                  </span>
+                </td>
+                <td className="p-3">
+                  {new Date(recovery.created_at).toLocaleDateString()}
+                </td>
+                <td className="p-3">
+                  {recovery.status !== 'recovered' && (
+                    <Button
+                      size="sm"
+                      onClick={() => markAsRecovered(recovery.stripe_invoice_id, recovery.amount_due)}
+                    >
+                      Mark Recovered
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/forgot-password/page.tsx">
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowLeft, Mail } from 'lucide-react'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export default function ForgotPasswordPage() {
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+
+      if (error) throw error
+
+      setSuccess(true)
+    } catch (error: any) {
+      setError(error.message || 'Failed to send reset email')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-md">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Link href="/login" className="text-slate-500 hover:text-slate-900">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <CardTitle className="text-center flex-1">Reset your password</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {success ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail className="h-6 w-6 text-green-600" />
+                </div>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Check your email</h3>
+                <p className="text-slate-600 mb-6">
+                  We've sent a password reset link to <strong>{email}</strong>.
+                  Click the link in the email to reset your password.
+                </p>
+                <Button asChild className="w-full">
+                  <Link href="/login">Back to login</Link>
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-slate-600 mb-6 text-center">
+                  Enter your email address and we'll send you a link to reset your password.
+                </p>
+                
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Email address
+                    </label>
+                    <Input
+                      type="email"
+                      placeholder="you@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="text-sm text-red-500 bg-red-50 p-3 rounded">
+                      {error}
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Sending...' : 'Send reset link'}
+                  </Button>
+                </form>
+
+                <div className="mt-6 text-center">
+                  <Link
+                    href="/login"
+                    className="text-sm text-slate-500 hover:text-slate-900"
+                  >
+                    Back to login
+                  </Link>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Don't have an account?{' '}
+          <Link href="/sign-up" className="font-medium text-slate-900 hover:underline">
+            Sign up
+          </Link>
+        </p>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+  icons: {
+    icon: '/icon.svg', // Points to public/cloud-lightning.png
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/login/page.tsx">
+'use client'
+
+import { useEffect } from 'react'
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useState } from "react"
+import { signIn } from "@/lib/backend/auth/auth"
+import { useRouter } from "next/navigation"
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (user) {
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        // No user, stay on login page
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      await signIn(email, password)
+      router.push('/dashboard')
+    } catch (error: any) {
+      setError(error.message || 'Failed to sign in')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-white">
+      <div className="absolute -top-40 -left-40 h-[480px] w-[480px] rounded-full bg-violet-200/40 blur-3xl" />
+      <div className="absolute top-1/3 -right-40 h-[420px] w-[420px] rounded-full bg-blue-200/30 blur-3xl" />
+
+      <div className="relative z-10 mx-auto grid min-h-screen max-w-6xl grid-cols-1 md:grid-cols-2 px-6">
+        <div className="hidden md:flex flex-col justify-center pr-12">
+          <div className="text-xl font-semibold tracking-tight text-slate-900">
+            Mend
+          </div>
+
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
+            Welcome back
+          </h1>
+
+          <p className="mt-4 max-w-md text-slate-600">
+            Access your revenue recovery dashboard and monitor failed payments,
+            recoveries, and outreach performance.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-center">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Sign in to your account
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Enter your details below
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700">
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  placeholder="you@company.com"
+                  className="mt-1"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700">
+                  Password
+                </label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  className="mt-1"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              {error && (
+                <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
+                  {error}
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </form>
+
+            <div className="mt-6 flex items-center justify-between text-sm">
+              <Link
+                href="/sign-up"
+                className="font-medium text-slate-900 hover:underline"
+              >
+                Create account
+              </Link>
+
+              <Link
+                href="/forgot-password"
+                className="text-slate-500 hover:text-slate-900"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/page.tsx">
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+
+export default function Home() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const user = await getCurrentUser()
+      if (user) {
+        router.push('/dashboard')
+      } else {
+        router.push('/landing')
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/sign-up/page.tsx">
+'use client'
+
+import { useEffect } from 'react'
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useState } from "react"
+import { signUp } from "@/lib/backend/auth/auth"
+import { useRouter } from "next/navigation"
+
+export default function SignupPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (user) {
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        // No user, stay on signup page
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      await signUp(email, password, fullName)
+      setSuccess(true)
+      setTimeout(() => {
+        router.push('/login')
+      }, 3000)
+    } catch (error: any) {
+      setError(error.message || 'Failed to create account')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-white">
+      <div className="absolute -top-40 -right-40 h-[480px] w-[480px] rounded-full bg-violet-200/40 blur-3xl" />
+      <div className="absolute bottom-1/4 -left-40 h-[420px] w-[420px] rounded-full bg-blue-200/30 blur-3xl" />
+
+      <div className="relative z-10 mx-auto grid min-h-screen max-w-6xl grid-cols-1 md:grid-cols-2 px-6">
+        <div className="hidden md:flex flex-col justify-center pr-12">
+          <div className="text-xl font-semibold tracking-tight text-slate-900">
+            Mend
+          </div>
+
+          <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
+            Get started for free
+          </h1>
+
+          <p className="mt-4 max-w-md text-slate-600">
+            Connect Stripe, recover failed revenue automatically, and keep your
+            customers without awkward emails.
+          </p>
+
+          <p className="mt-6 text-sm text-slate-500">
+            Free to start • No credit card required
+          </p>
+        </div>
+
+        <div className="flex items-center justify-center">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Create your account
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                It takes less than a minute
+              </p>
+            </div>
+
+            {success ? (
+              <div className="text-center py-8">
+                <div className="text-green-500 mb-4">
+                  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Check your email!</h3>
+                <p className="text-sm text-slate-600">
+                  We've sent a confirmation link to your email address. Please check your inbox and click the link to verify your account.
+                </p>
+                <p className="text-xs text-slate-500 mt-4">
+                  Redirecting to login page...
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Full Name
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Alex Johnson"
+                    className="mt-1"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Work email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="you@company.com"
+                    className="mt-1"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="At least 8 characters"
+                    className="mt-1"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
+                    {error}
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Creating account...' : 'Create account'}
+                </Button>
+              </form>
+            )}
+
+            <p className="mt-6 text-center text-sm text-slate-500">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-slate-900 hover:underline"
+              >
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="components.json">
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "slate",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "registries": {}
+}
+</file>
+
+<file path="components/layout.tsx">
+'use client'
+
+import { ReactNode } from "react"
+import Link from "next/link"
+import { CloudLightning } from "lucide-react"
+import { signOut } from "@/lib/backend/auth/auth"
+import { useRouter } from "next/navigation"
+
+export default function Layout({ children }: { children: ReactNode }) {
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      router.push('/login')
+    } catch (error) {
+      console.error('Failed to logout:', error)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-white text-slate-900">
+      {/* Top bar */}
+      <header className="border-b border-slate-200">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="relative">
+              <CloudLightning className="w-8 h-8 text-slate-600 fill-slate-50/50" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-slate-600 transition-colors">
+              Mend
+            </span>
+          </Link>
+
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-slate-500">
+              Revenue Recovery
+            </span>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1 rounded hover:bg-slate-100"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-10">
+        {children}
+      </main>
+    </div>
+  )
+}
+</file>
+
+<file path="components/ui/button.tsx">
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { cn } from "@/lib/utils"
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+        outline:
+          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost:
+          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-9 px-4 py-2 has-[>svg]:px-3",
+        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
+        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
+        icon: "size-9",
+        "icon-sm": "size-8",
+        "icon-lg": "size-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+function Button({
+  className,
+  variant = "default",
+  size = "default",
+  asChild = false,
+  ...props
+}: React.ComponentProps<"button"> &
+  VariantProps<typeof buttonVariants> & {
+    asChild?: boolean
+  }) {
+  const Comp = asChild ? Slot : "button"
+
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant}
+      data-size={size}
+      className={cn(buttonVariants({ variant, size, className }))}
+      {...props}
+    />
+  )
+}
+
+export { Button, buttonVariants }
+</file>
+
+<file path="components/ui/card.tsx">
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Card({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card"
+      className={cn(
+        "bg-card text-card-foreground flex flex-col gap-6 rounded-xl border py-6 shadow-sm",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-header"
+      className={cn(
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-title"
+      className={cn("leading-none font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-action"
+      className={cn(
+        "col-start-2 row-span-2 row-start-1 self-start justify-self-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-content"
+      className={cn("px-6", className)}
+      {...props}
+    />
+  )
+}
+
+function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="card-footer"
+      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardDescription,
+  CardContent,
+}
+</file>
+
+<file path="components/ui/dialog.tsx">
+"use client"
+
+import * as React from "react"
+import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { XIcon } from "lucide-react"
+
+import { cn } from "@/lib/utils"
+
+function Dialog({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}
+
+function DialogTrigger({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+}
+
+function DialogPortal({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Portal>) {
+  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+}
+
+function DialogClose({
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
+}
+
+function DialogOverlay({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  return (
+    <DialogPrimitive.Overlay
+      data-slot="dialog-overlay"
+      className={cn(
+        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  showCloseButton?: boolean
+}) {
+  return (
+    <DialogPortal data-slot="dialog-portal">
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        className={cn(
+          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 outline-none sm:max-w-lg",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+          >
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  )
+}
+
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn(
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function DialogTitle({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn("text-lg leading-none font-semibold", className)}
+      {...props}
+    />
+  )
+}
+
+function DialogDescription({
+  className,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn("text-muted-foreground text-sm", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  DialogTitle,
+  DialogTrigger,
+}
+</file>
+
+<file path="components/ui/input.tsx">
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+  return (
+    <input
+      type={type}
+      data-slot="input"
+      className={cn(
+        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Input }
+</file>
+
+<file path="components/ui/label.tsx">
+"use client"
+
+import * as React from "react"
+import * as LabelPrimitive from "@radix-ui/react-label"
+
+import { cn } from "@/lib/utils"
+
+function Label({
+  className,
+  ...props
+}: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  return (
+    <LabelPrimitive.Root
+      data-slot="label"
+      className={cn(
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Label }
+</file>
+
+<file path="components/ui/MetricCard.tsx">
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react"
+
+interface MetricCardProps {
+  title: string
+  value: string
+  change: string
+  trend: 'up' | 'down' | 'neutral'
+}
+
+export function MetricCard({ title, value, change, trend }: MetricCardProps) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {title}
+        </CardTitle>
+        {trend === 'up' && <ArrowUpRight className="h-4 w-4 text-green-500" />}
+        {trend === 'down' && <ArrowDownRight className="h-4 w-4 text-rose-500" />}
+        {trend === 'neutral' && <Minus className="h-4 w-4 text-slate-400" />}
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        <p className={`text-xs mt-1 font-medium ${
+          trend === 'up' ? 'text-green-600' : 
+          trend === 'down' ? 'text-rose-600' : 
+          'text-slate-500'
+        }`}>
+          {change}
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="lib/backend/auth/auth.ts">
+import { supabase } from "../supabaseClient"
+
+export async function signUp(email: string, password: string, fullName: string) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name: fullName,
+      }
+    }
+  })
+  
+  if (error) throw error
+  return data
+}
+
+export async function signIn(email: string, password: string) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+  
+  if (error) throw error
+  return data
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+}
+
+// lib/backend/auth/auth.ts
+export async function getCurrentUser() {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      // Don't log "Auth session missing!" errors - they're expected
+      if (error.message !== 'Auth session missing!' && !error.message.includes('Auth session')) {
+        console.error('Auth error:', error.message);
+      }
+      return null;
+    }
+    
+    return user;
+  } catch (error) {
+    console.error('Failed to get current user:', error);
+    return null;
+  }
+}
+
+export async function updateProfile(userId: string, updates: any) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', userId)
+    
+  if (error) throw error
+  return data
+}
+</file>
+
+<file path="lib/backend/supabaseClient.ts">
+import { createClient } from '@supabase/supabase-js'
+
+console.log("Checking Env Vars...");
+console.log("URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log("KEY:", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+// You must add this line to actually create the connection
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+</file>
+
+<file path="lib/groq.ts">
+import Groq from "groq-sdk";
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+export async function generateMendMessage({ customerName, amount, currency }: any) {
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful SaaS founder. A customer's payment failed. Write a very short, empathetic email (2-3 sentences). Don't sound like a debt collector. Sound like a friend checking in because their card might have expired. No subject line, just body."
+        },
+        {
+          role: "user",
+          content: `Customer: ${customerName}, Amount: ${amount} ${currency}.`
+        }
+      ],
+      model: "llama-3.3-70b-versatile", // Updated model
+      temperature: 0.7,
+      max_tokens: 150
+    });
+
+    return completion.choices[0]?.message?.content || `Hi ${customerName}, just a quick heads-up that your payment for $${amount} ${currency} didn't go through. It's usually just an expired card — you can update it here when you have a moment.`;
+  } catch (error) {
+    console.error('Groq API error:', error);
+    return `Hi ${customerName}, just a quick heads-up that your payment for $${amount} ${currency} didn't go through. It's usually just an expired card — you can update it here when you have a moment.`;
+  }
+}
+</file>
+
+<file path="lib/resend.ts">
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY!);
+
+export async function sendRecoveryEmail(to: string, message: string) {
+  try {
+    console.log('📧 Attempting to send email to:', to);
+    
+    const { data, error } = await resend.emails.send({
+      from: 'Mend <onboarding@resend.dev>', // Use Resend's test domain for now
+      to,
+      subject: 'Payment Issue Update',
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          <div style="background: #f8fafc; padding: 30px; border-radius: 12px; margin: 20px 0;">
+            <h2 style="color: #1e293b; margin: 0 0 20px 0; font-size: 20px;">Mend</h2>
+            <div style="background: white; padding: 25px; border-radius: 8px; border: 1px solid #e2e8f0; white-space: pre-line; margin-bottom: 25px;">
+              ${message}
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; font-size: 13px; color: #64748b;">
+              <p>This is an automated message from Mend. If you believe this is a mistake, please contact our support team.</p>
+              <p>© ${new Date().getFullYear()} Mend. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      `
+    });
+
+    if (error) {
+      console.error('❌ Resend error:', error);
+      throw error;
+    }
+
+    console.log('✅ Email sent successfully! ID:', data?.id);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Failed to send recovery email:', error);
+    throw error;
+  }
+}
+</file>
+
+<file path="lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="README.md">
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="app/admin/comissions/page.tsx">
+// app/admin/comissions/page.tsx
+'use client'
+
+import { useState, useEffect, Fragment } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DollarSign, Clock, CheckCircle, User, ChevronDown, ChevronRight } from 'lucide-react'
+
+interface Commission {
+  id: string
+  user_id: string
+  user_email: string
+  commission_amount: number
+  status: 'pending' | 'invoiced' | 'paid'
+  period_start: string
+  period_end: string
+  invoice_sent_at: string | null
+  created_at: string
+  paid_at: string | null
+}
+
+interface UserSummary {
+  user_id: string
+  user_email: string
+  user_name: string
+  total_owed: number
+  pending_amount: number
+  invoiced_amount: number
+  paid_amount: number
+  last_invoice_sent: string | null
+  commission_count: number
+  commissions?: Commission[]
+}
+
+export default function AdminCommissionsPage() {
+  const [accessCode, setAccessCode] = useState('')
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [userSummaries, setUserSummaries] = useState<UserSummary[]>([])
+  const [loading, setLoading] = useState(false)
+  const [expandedUsers, setExpandedUsers] = useState<string[]>([])
+  const [stats, setStats] = useState({
+    totalOwed: 0,
+    pendingCount: 0,
+    invoicedCount: 0,
+    paidCount: 0,
+    userCount: 0
+  })
+
+  useEffect(() => {
+    const savedAuth = localStorage.getItem('admin_authenticated')
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true)
+      loadCommissions()
+    }
+  }, [])
+
+  const loadCommissions = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/admin/commissions')
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setUserSummaries(data.userSummaries || [])
+        setStats(data.stats || {
+          totalOwed: 0,
+          pendingCount: 0,
+          invoicedCount: 0,
+          paidCount: 0,
+          userCount: 0
+        })
+      } else {
+        throw new Error(data.error || 'Failed to load data')
+      }
+    } catch (error: any) {
+      console.error('Error loading commissions:', error)
+      alert('Failed to load commission data: ' + error.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (accessCode === '123456') {
+      setIsAuthenticated(true)
+      localStorage.setItem('admin_authenticated', 'true')
+      loadCommissions()
+    } else {
+      alert('Invalid access code. Use: 123456')
+    }
+  }
+
+  const markAsInvoiced = async (commissionId: string, userId: string) => {
+    if (!confirm('Mark this commission as invoiced?')) return
+    
+    try {
+      const response = await fetch('/api/admin/mark-invoiced', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commissionId, userId })
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        alert('Commission marked as invoiced!')
+        loadCommissions()
+      } else {
+        throw new Error(data.error || 'Failed to update')
+      }
+    } catch (error: any) {
+      console.error('Error:', error)
+      alert('Failed to update status: ' + error.message)
+    }
+  }
+
+  const markAsPaid = async (commissionId: string, userId: string) => {
+    if (!confirm('Mark this commission as paid?')) return
+    
+    try {
+      const response = await fetch('/api/admin/mark-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commissionId, userId })
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        alert('Commission marked as paid!')
+        loadCommissions()
+      } else {
+        throw new Error(data.error || 'Failed to update')
+      }
+    } catch (error: any) {
+      console.error('Error:', error)
+      alert('Failed to update status: ' + error.message)
+    }
+  }
+
+  const toggleUserDetails = (userId: string) => {
+    setExpandedUsers(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    )
+  }
+
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    localStorage.removeItem('admin_authenticated')
+    setAccessCode('')
+    setUserSummaries([])
+    setExpandedUsers([])
+  }
+
+  // Login form
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-center">Admin Access</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Enter Admin Code
+                </label>
+                <Input
+                  type="password"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  placeholder="Enter 123456"
+                  className="text-center text-lg"
+                  autoFocus
+                />
+                <p className="text-xs text-slate-500 mt-2 text-center">
+                  Use code: <strong>123456</strong>
+                </p>
+              </div>
+              <Button type="submit" className="w-full">
+                Access Dashboard
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Main dashboard
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Manual Invoicing Dashboard</h1>
+            <p className="text-slate-600">Track and manage commissions manually</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <Button onClick={loadCommissions} disabled={loading}>
+              {loading ? 'Refreshing...' : 'Refresh Data'}
+            </Button>
+            <Button variant="outline" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Total Owed</p>
+                  <p className="text-2xl font-bold">${stats.totalOwed.toFixed(2)}</p>
+                </div>
+                <DollarSign className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Users Owing</p>
+                  <p className="text-2xl font-bold">{stats.userCount}</p>
+                </div>
+                <User className="h-8 w-8 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Pending</p>
+                  <p className="text-2xl font-bold">{stats.pendingCount}</p>
+                </div>
+                <Clock className="h-8 w-8 text-yellow-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Paid</p>
+                  <p className="text-2xl font-bold">{stats.paidCount}</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* User Summaries Table */}
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>
+                User Commissions ({stats.userCount} users)
+              </CardTitle>
+              <div className="text-sm text-slate-600">
+                Last updated: {new Date().toLocaleTimeString()}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 mx-auto"></div>
+                <p className="mt-2 text-slate-600">Loading commissions...</p>
+              </div>
+            ) : userSummaries.length === 0 ? (
+              <div className="text-center py-12 text-slate-500">
+                No commissions found. Run some recoveries to see commissions here.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4"></th>
+                      <th className="text-left py-3 px-4">User</th>
+                      <th className="text-left py-3 px-4">Total Owed</th>
+                      <th className="text-left py-3 px-4">Last Invoice</th>
+                      <th className="text-left py-3 px-4">Commissions</th>
+                      <th className="text-left py-3 px-4">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {userSummaries.map((user) => {
+                      const isExpanded = expandedUsers.includes(user.user_id)
+                      const totalOwed = user.total_owed / 100
+                      const commissions = user.commissions || []
+                      const pendingCount = commissions.filter(c => c.status === 'pending').length
+                      
+                      return (
+                        <Fragment key={user.user_id}>
+                          {/* User Summary Row */}
+                          <tr className="border-b hover:bg-slate-50">
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => toggleUserDetails(user.user_id)}
+                                className="p-1 hover:bg-slate-200 rounded"
+                                disabled={commissions.length === 0}
+                              >
+                                {commissions.length > 0 ? (
+                                  isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium">{user.user_name || 'User'}</div>
+                              <div className="text-xs text-slate-500">{user.user_email}</div>
+                              <div className="text-xs text-slate-400">{user.user_id.substring(0, 8)}...</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-lg">
+                                ${totalOwed.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-1">
+                                {user.pending_amount > 0 && (
+                                  <span className="mr-2">Pending: ${(user.pending_amount / 100).toFixed(2)}</span>
+                                )}
+                                {user.invoiced_amount > 0 && (
+                                  <span>Invoiced: ${(user.invoiced_amount / 100).toFixed(2)}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              {user.last_invoice_sent ? (
+                                <>
+                                  <div className="font-medium">
+                                    {new Date(user.last_invoice_sent).toLocaleDateString()}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {new Date(user.last_invoice_sent).toLocaleTimeString([], { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit' 
+                                    })}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-slate-400">Never</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium">{user.commission_count}</div>
+                              <div className="text-xs text-slate-500">
+                                {pendingCount} pending
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex flex-col gap-2">
+                                {totalOwed > 0 && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => {
+                                      alert(`Would send invoice to ${user.user_email} for $${totalOwed.toFixed(2)}`)
+                                    }}
+                                  >
+                                    Send Invoice
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Expanded Details Row */}
+                          {isExpanded && commissions.length > 0 && (
+                            <tr className="border-b bg-slate-50">
+                              <td colSpan={6} className="py-4 px-4">
+                                <div className="pl-8">
+                                  <h4 className="font-medium text-slate-900 mb-3">
+                                    Individual Commissions ({commissions.length})
+                                  </h4>
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b">
+                                          <th className="text-left py-2 px-3">Period</th>
+                                          <th className="text-left py-2 px-3">Commission</th>
+                                          <th className="text-left py-2 px-3">Status</th>
+                                          <th className="text-left py-2 px-3">Created</th>
+                                          <th className="text-left py-2 px-3">Invoice Sent</th>
+                                          <th className="text-left py-2 px-3">Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {commissions.map((commission) => (
+                                          <tr key={commission.id} className="border-b hover:bg-white">
+                                            <td className="py-2 px-3">
+                                              {commission.period_start ? (
+                                                <>
+                                                  {new Date(commission.period_start).toLocaleDateString()} -<br/>
+                                                  {new Date(commission.period_end).toLocaleDateString()}
+                                                </>
+                                              ) : (
+                                                <span className="text-slate-400">No period</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3 font-medium">
+                                              ${((commission.commission_amount || 0) / 100).toFixed(2)}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                commission.status === 'paid' ? 'bg-green-100 text-green-800' :
+                                                commission.status === 'invoiced' ? 'bg-blue-100 text-blue-800' :
+                                                'bg-yellow-100 text-yellow-800'
+                                              }`}>
+                                                {commission.status || 'pending'}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              {commission.created_at ? (
+                                                new Date(commission.created_at).toLocaleDateString()
+                                              ) : (
+                                                <span className="text-slate-400">—</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              {commission.invoice_sent_at ? (
+                                                new Date(commission.invoice_sent_at).toLocaleDateString()
+                                              ) : (
+                                                <span className="text-slate-400">—</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="flex gap-1">
+                                                {commission.status === 'pending' && (
+                                                  <Button 
+                                                    variant="outline"
+                                                    onClick={() => markAsInvoiced(commission.id, user.user_id)}
+                                                  >
+                                                    Mark Invoiced
+                                                  </Button>
+                                                )}
+                                                {commission.status === 'invoiced' && (
+                                                  <Button 
+                                                    variant="outline"
+                                                    onClick={() => markAsPaid(commission.id, user.user_id)}
+                                                  >
+                                                    Mark Paid
+                                                  </Button>
+                                                )}
+                                                {commission.status === 'paid' && (
+                                                  <span className="text-xs text-green-600 flex items-center">
+                                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                                    Paid
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Summary */}
+        <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="font-medium text-blue-900 mb-2">How to use this dashboard:</p>
+          <ol className="list-decimal pl-5 text-blue-800 space-y-1">
+            <li>Review the user summaries to see who owes money</li>
+            <li>Click the arrow next to a user to see individual commissions</li>
+            <li>Click "Send Invoice" to invoice a user for their total owed amount</li>
+            <li>When you send an invoice, click "Mark Invoiced" on individual commissions</li>
+            <li>When payment is received, click "Mark Paid"</li>
+            <li>Commissions are calculated as 10% of recovered revenue</li>
+          </ol>
+        </div>
+      </main>
+    </div>
+  )
+}
+</file>
+
+<file path="app/api/admin/commissions/route.ts">
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+interface Commission {
+  id: string
+  user_id: string
+  user_email: string
+  commission_amount: number
+  amount_recovered: number
+  status: 'pending' | 'invoiced' | 'paid'
+  period_start: string
+  period_end: string
+  stripe_invoice_id: string | null
+  created_at: string
+  paid_at: string | null
+  invoice_sent_at: string | null
+}
+
+interface UserSummary {
+  user_id: string
+  user_name: string
+  user_email: string
+  total_owed: number // Total commission amount (in cents)
+  pending_amount: number
+  invoiced_amount: number
+  paid_amount: number
+  last_invoice_sent: string | null
+  commission_count: number
+  individual_commissions: Commission[] // Keep individual commissions for detail view
+}
+
+export async function GET(request: Request) {
+  try {
+    console.log('Admin commissions API called')
+    
+    // Get all commissions
+    const { data: commissions, error: commissionsError } = await supabase
+      .from('commissions')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (commissionsError) {
+      console.error('Error fetching commissions:', commissionsError)
+      throw commissionsError
+    }
+
+    console.log('Commissions found:', commissions?.length)
+
+    if (!commissions || commissions.length === 0) {
+      return NextResponse.json({ 
+        success: true,
+        userSummaries: [],
+        stats: {
+          totalOwed: 0,
+          pendingCount: 0,
+          invoicedCount: 0,
+          paidCount: 0,
+          userCount: 0
+        }
+      })
+    }
+
+    // Get user details for each commission from user_details table
+    const userIds = [...new Set(commissions.map(c => c.user_id))]
+    
+    const { data: userDetails, error: userDetailsError } = await supabase
+      .from('user_details')
+      .select('id, email, full_name')
+      .in('id', userIds)
+
+    if (userDetailsError) {
+      console.error('Error fetching user details:', userDetailsError)
+    }
+
+    // Create user map from user_details
+    const userMap = new Map()
+    userDetails?.forEach(user => {
+      userMap.set(user.id, {
+        email: user.email,
+        name: user.full_name || user.email?.split('@')[0] || 'User'
+      })
+    })
+
+    // Group commissions by user
+    const userSummaries = new Map<string, UserSummary>()
+
+    commissions.forEach(commission => {
+      const userId = commission.user_id
+      
+      // Try to get email from multiple sources
+      let userEmail = commission.user_email
+      let userName = 'User'
+      
+      // If commission has "Unknown" email or no email, try user_details
+      if (!userEmail || userEmail === 'Unknown' || userEmail === 'unknown@example.com') {
+        const userDetail = userMap.get(commission.user_id)
+        userEmail = userDetail?.email || `${commission.user_id.substring(0, 8)}...`
+        userName = userDetail?.name || `User ${commission.user_id.substring(0, 8)}`
+      } else {
+        // Commission has email, but we might not have name
+        const userDetail = userMap.get(commission.user_id)
+        userName = userDetail?.name || commission.user_email?.split('@')[0] || 'User'
+      }
+
+      // Initialize user summary if not exists
+      if (!userSummaries.has(userId)) {
+        userSummaries.set(userId, {
+          user_id: userId,
+          user_name: userName,
+          user_email: userEmail,
+          total_owed: 0,
+          pending_amount: 0,
+          invoiced_amount: 0,
+          paid_amount: 0,
+          last_invoice_sent: null,
+          commission_count: 0,
+          individual_commissions: []
+        })
+      }
+
+      const userSummary = userSummaries.get(userId)!
+      
+      // Add to individual commissions
+      userSummary.individual_commissions.push({
+        id: commission.id,
+        user_id: commission.user_id,
+        user_email: userEmail,
+        commission_amount: commission.commission_amount || 0,
+        amount_recovered: commission.amount_recovered || 0,
+        status: commission.status || 'pending',
+        period_start: commission.period_start,
+        period_end: commission.period_end,
+        stripe_invoice_id: commission.stripe_invoice_id,
+        created_at: commission.created_at,
+        paid_at: commission.paid_at,
+        invoice_sent_at: commission.invoice_sent_at
+      })
+
+      // Update totals
+      userSummary.commission_count += 1
+      
+      if (commission.status === 'pending') {
+        userSummary.pending_amount += commission.commission_amount || 0
+      } else if (commission.status === 'invoiced') {
+        userSummary.invoiced_amount += commission.commission_amount || 0
+      } else if (commission.status === 'paid') {
+        userSummary.paid_amount += commission.commission_amount || 0
+      }
+
+      // Add to total owed (pending + invoiced, not paid)
+      if (commission.status !== 'paid') {
+        userSummary.total_owed += commission.commission_amount || 0
+      }
+
+      // Update last invoice sent date
+      if (commission.invoice_sent_at) {
+        const invoiceDate = new Date(commission.invoice_sent_at)
+        const currentLastDate = userSummary.last_invoice_sent ? 
+          new Date(userSummary.last_invoice_sent) : null
+        
+        if (!currentLastDate || invoiceDate > currentLastDate) {
+          userSummary.last_invoice_sent = commission.invoice_sent_at
+        }
+      }
+    })
+
+    // Convert Map to array and sort by total owed (highest first)
+    const userSummariesArray = Array.from(userSummaries.values())
+      .sort((a, b) => b.total_owed - a.total_owed)
+
+    // Calculate global stats
+    const stats = {
+      totalOwed: userSummariesArray.reduce((sum, user) => sum + (user.total_owed / 100), 0),
+      pendingCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'pending').length, 0),
+      invoicedCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'invoiced').length, 0),
+      paidCount: userSummariesArray.reduce((sum, user) => sum + user.individual_commissions.filter(c => c.status === 'paid').length, 0),
+      userCount: userSummariesArray.length
+    }
+
+    return NextResponse.json({ 
+      success: true,
+      userSummaries: userSummariesArray,
+      stats
+    })
+
+  } catch (error: any) {
+    console.error('Admin commissions error:', error)
+    return NextResponse.json({ 
+      success: false,
+      error: 'Failed to fetch commissions',
+      details: error.message 
+    }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/api/comission/generate/route.ts">
+import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
+import { supabase } from '@/lib/backend/supabaseClient';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+export async function POST(request: Request) {
+
+    return NextResponse.json({ 
+    disabled: true,
+    message: 'Automatic invoicing is disabled. Use the manual admin dashboard at /admin/comissions',
+    manualDashboard: '/admin/comissions'
+  }, { status: 400 });
+  try {
+    const { month, year, user_id } = await request.json();
+    
+    // Default to last month if not specified
+    const targetDate = new Date(year || new Date().getFullYear(), 
+                               month !== undefined ? month : new Date().getMonth() - 1, 1);
+    
+    const period_start = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+    const period_end = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+
+    console.log(`Generating commissions for ${period_start.toLocaleDateString()} - ${period_end.toLocaleDateString()}`);
+
+    // Get pending commissions for the period
+    let query = supabase
+      .from('commissions')
+      .select('*')
+      .eq('status', 'pending')
+      .gte('period_start', period_start.toISOString().split('T')[0])
+      .lte('period_end', period_end.toISOString().split('T')[0])
+      .gt('commission_amount', 0);
+
+    // If specific user_id provided, filter by user
+    if (user_id) {
+      query = query.eq('user_id', user_id);
+    }
+
+    const { data: pendingCommissions, error } = await query;
+
+    if (error) throw error;
+
+    // Group commissions by user manually
+    const commissionsByUser: Record<string, {
+      user_id: string;
+      total_commission: number;
+      commissions: any[];
+      email?: string;
+      name?: string;
+    }> = {};
+
+    // First, get all unique user IDs
+    const userIds = [...new Set(pendingCommissions?.map(c => c.user_id))];
+
+    // Get user details for each user
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, email, raw_user_meta_data')
+      .in('id', userIds);
+
+    // Create user map for easy lookup
+    const userMap = new Map();
+    users?.forEach(user => {
+      userMap.set(user.id, {
+        email: user.email,
+        name: user.raw_user_meta_data?.full_name || user.email?.split('@')[0] || 'User'
+      });
+    });
+
+    // Group commissions by user
+    pendingCommissions?.forEach(commission => {
+      if (!commissionsByUser[commission.user_id]) {
+        const userInfo = userMap.get(commission.user_id);
+        commissionsByUser[commission.user_id] = {
+          user_id: commission.user_id,
+          total_commission: 0,
+          commissions: [],
+          email: userInfo?.email,
+          name: userInfo?.name
+        };
+      }
+      
+      commissionsByUser[commission.user_id].total_commission += commission.commission_amount;
+      commissionsByUser[commission.user_id].commissions.push(commission);
+    });
+
+    const results = [];
+
+    // Generate invoices for each user
+    for (const userId in commissionsByUser) {
+      const userCommissions = commissionsByUser[userId];
+      
+      try {
+        // Get or create Stripe customer
+        let customerId = await getOrCreateCustomer(
+          userCommissions.user_id, 
+          userCommissions.email || 'unknown@example.com', 
+          userCommissions.name
+        );
+
+        // Create invoice
+        const invoice = await stripe.invoices.create({
+          customer: customerId,
+          collection_method: 'send_invoice',
+          days_until_due: 30,
+          metadata: {
+            user_id: userCommissions.user_id,
+            period_start: period_start.toISOString().split('T')[0],
+            period_end: period_end.toISOString().split('T')[0],
+            commission_count: userCommissions.commissions.length
+          },
+          description: `Mend Commission - ${period_start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+        });
+
+        // Add invoice item for total commission
+        await stripe.invoiceItems.create({
+          customer: customerId,
+          invoice: invoice.id,
+          amount: userCommissions.total_commission,
+          currency: 'usd',
+          description: `Commission for ${userCommissions.commissions.length} recovered payment(s)`,
+          metadata: {
+            type: 'commission',
+            period: `${period_start.toISOString().split('T')[0]}_${period_end.toISOString().split('T')[0]}`
+          }
+        });
+
+        // Finalize and send invoice
+        const finalInvoice = await stripe.invoices.finalizeInvoice(invoice.id);
+        await stripe.invoices.sendInvoice(invoice.id);
+
+        // Update commissions with invoice ID
+        const commissionIds = userCommissions.commissions.map(c => c.id);
+        await supabase
+          .from('commissions')
+          .update({ 
+            status: 'invoiced',
+            stripe_invoice_id: invoice.id
+          })
+          .in('id', commissionIds);
+
+        results.push({
+          user_id: userCommissions.user_id,
+          email: userCommissions.email,
+          name: userCommissions.name,
+          amount: `$${(userCommissions.total_commission / 100).toFixed(2)}`,
+          invoice_id: invoice.id,
+          invoice_url: finalInvoice.hosted_invoice_url,
+          status: 'sent',
+          commission_count: userCommissions.commissions.length
+        });
+
+        console.log(`📧 Invoice sent to ${userCommissions.email} for $${(userCommissions.total_commission / 100).toFixed(2)}`);
+
+      } catch (userError: any) {
+        console.error(`Failed to invoice user ${userId}:`, userError.message);
+        results.push({
+          user_id: userCommissions.user_id,
+          email: userCommissions.email,
+          name: userCommissions.name,
+          amount: `$${(userCommissions.total_commission / 100).toFixed(2)}`,
+          error: userError.message,
+          status: 'failed'
+        });
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      period: `${period_start.toISOString().split('T')[0]} to ${period_end.toISOString().split('T')[0]}`,
+      total_users: Object.keys(commissionsByUser).length,
+      total_invoiced: results.filter(r => r.status === 'sent').length,
+      total_amount: results.reduce((sum, r) => {
+        if (r.amount) {
+          const amount = parseFloat(r.amount.replace('$', ''));
+          return sum + amount;
+        }
+        return sum;
+      }, 0),
+      results 
+    });
+
+  } catch (error: any) {
+    console.error('Failed to generate commissions:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+async function getOrCreateCustomer(userId: string, email: string, name?: string): Promise<string> {
+  try {
+    // Check if customer exists in Stripe
+    const existingCustomers = await stripe.customers.list({
+      email: email,
+      limit: 1
+    });
+
+    if (existingCustomers.data.length > 0) {
+      return existingCustomers.data[0].id;
+    }
+
+    // Create new customer
+    const customer = await stripe.customers.create({
+      email: email,
+      name: name || email.split('@')[0],
+      metadata: {
+        user_id: userId,
+        source: 'mend_app'
+      }
+    });
+
+    return customer.id;
+    
+  } catch (error: any) {
+    throw new Error(`Failed to get/create customer: ${error.message}`);
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'ready',
+    instructions: 'POST to generate invoices for pending commissions',
+    parameters: {
+      month: 'Optional (0-11, 0=January)',
+      year: 'Optional (default: current year)',
+      user_id: 'Optional (generate for specific user only)'
+    }
+  });
+}
+</file>
+
+<file path="app/api/webhooks/stripe/route.ts">
+import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
+import { generateMendMessage } from '@/lib/groq';
+import { sendRecoveryEmail } from '@/lib/resend';
+import { supabase } from '@/lib/backend/supabaseClient';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { 
+  
+});
+
+// Helper to log webhook events
+async function logWebhookEvent(event: any, status: string, error?: any) {
+  try {
+    await supabase.from('webhook_logs').insert({
+      event_type: event.type,
+      stripe_event_id: event.id,
+      payload: event,
+      status,
+      error_message: error?.message,
+      processed_at: status === 'processed' ? new Date().toISOString() : null
+    });
+  } catch (logError) {
+    console.error('Failed to log webhook event:', logError);
+  }
+}
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const sig = req.headers.get('stripe-signature');
+  
+  if (!sig) {
+    console.error('Missing Stripe signature');
+    return NextResponse.json({ error: 'Missing signature' }, { status: 400 });
+  }
+
+  let event: Stripe.Event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      body, 
+      sig, 
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error('Webhook signature verification failed:', err.message);
+    await logWebhookEvent({ type: 'signature_failed', id: 'none' }, 'failed', err);
+    return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 });
+  }
+
+  await logWebhookEvent(event, 'received');
+
+  try {
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice;
+      const stripeAccountId = event.account || 'acct_default';
+      
+      console.log('Processing failed payment for invoice:', invoice.id);
+      
+      // Get customer email - fetch from Stripe if not in webhook
+      let customerEmail = invoice.customer_email;
+      let customerName = invoice.customer_name || 'there';
+
+      // If no email, try to fetch customer from Stripe
+      if (!customerEmail && invoice.customer) {
+        try {
+          let customer;
+          if (typeof invoice.customer === 'string') {
+            // Fetch customer from Stripe using the account ID
+            customer = await stripe.customers.retrieve(invoice.customer, {
+              stripeAccount: stripeAccountId !== 'acct_default' ? stripeAccountId : undefined
+            });
+          } else {
+            customer = invoice.customer;
+          }
+          
+          if (customer && typeof customer === 'object' && 'email' in customer) {
+            customerEmail = (customer as Stripe.Customer).email;
+            if ((customer as Stripe.Customer).name) customerName = (customer as Stripe.Customer).name!;
+          }
+        } catch (error) {
+          console.error('Failed to fetch customer details:', error);
+        }
+      }
+
+      console.log('Customer details resolved:', { customerEmail, customerName });
+
+      // Find the Stripe account in our database
+      let stripeAccountData;
+      if (stripeAccountId !== 'acct_default') {
+        const { data } = await supabase
+          .from('stripe_accounts')
+          .select('stripe_account_id, user_id')
+          .eq('stripe_account_id', stripeAccountId)
+          .single();
+        stripeAccountData = data;
+      } else {
+        stripeAccountData = { stripe_account_id: 'acct_default', user_id: 'unknown' };
+      }
+
+      if (!stripeAccountData) {
+        console.warn('No Stripe account found in database:', stripeAccountId);
+        await logWebhookEvent(event, 'failed', new Error('No Stripe account found in database'));
+        return NextResponse.json({ received: true, warning: 'No account found in database' });
+      }
+
+      // Generate personalized message
+      let personalizedMessage = '';
+      try {
+        personalizedMessage = await generateMendMessage({
+          customerName,
+          amount: (invoice.amount_due / 100).toFixed(2),
+          currency: invoice.currency.toUpperCase()
+        });
+      } catch (groqError) {
+        personalizedMessage = `Hi ${customerName}, just a quick heads-up that your payment for $${(invoice.amount_due / 100).toFixed(2)} didn't go through. It's usually just an expired card — you can update it here when you have a moment.`;
+      }
+
+      // Send recovery email if we have customer email
+      if (customerEmail) {
+        try {
+          await sendRecoveryEmail(customerEmail, personalizedMessage);
+          console.log('Recovery email sent to:', customerEmail);
+        } catch (emailError) {
+          console.error('Failed to send recovery email:', emailError);
+          await logWebhookEvent(event, 'partial', emailError);
+        }
+      }
+
+      // Log recovery attempt to Supabase
+      let customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
+
+      try {
+        const recoveryRecord = {
+          stripe_customer_id: customerId || 'unknown',
+          stripe_invoice_id: invoice.id,
+          stripe_account_id: stripeAccountData.stripe_account_id,
+          amount_due: invoice.amount_due,
+          customer_email: customerEmail || '',
+          customer_name: customerName,
+          message_sent: personalizedMessage,
+          status: customerEmail ? 'email_sent' : 'pending'
+        };
+
+        console.log('Inserting recovery:', recoveryRecord);
+
+        const { error: recoveryError } = await supabase
+          .from('recoveries')
+          .insert(recoveryRecord);
+
+        if (recoveryError) {
+          console.error('Failed to log recovery:', recoveryError);
+        } else {
+          console.log('✅ Recovery logged successfully');
+        }
+      } catch (dbError) {
+        console.error('Failed to log recovery:', dbError);
+      }
+
+      await logWebhookEvent(event, 'processed');
+    }
+
+    // Handle successful payment recovery AND create commission
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object as Stripe.Invoice;
+      const stripeAccountId = event.account || 'acct_default';
+      
+      try {
+        // Update recovery status
+        const { data: recovery, error: updateError } = await supabase
+          .from('recoveries')
+          .update({ 
+            status: 'recovered',
+            recovered_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', invoice.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error('Failed to update recovery status:', updateError);
+        } else if (recovery) {
+          console.log('✅ Invoice marked as recovered:', invoice.id);
+          
+          // Get user's Stripe account to find user_id
+          const { data: stripeAccount } = await supabase
+            .from('stripe_accounts')
+            .select('user_id')
+            .eq('stripe_account_id', stripeAccountId)
+            .single();
+
+          if (stripeAccount) {
+            // Create commission record (10% of recovered amount)
+            const amount_recovered = invoice.amount_paid || invoice.amount_due;
+            const commission_percentage = 10;
+            const commission_amount = Math.floor(amount_recovered * commission_percentage / 100);
+            
+            const now = new Date();
+            const period_start = new Date(now.getFullYear(), now.getMonth(), 1);
+            const period_end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+            const commissionRecord = {
+              user_id: stripeAccount.user_id,
+              stripe_account_id: stripeAccountId,
+              user_email: recovery.customer_email || 'unknown@example.com', 
+              recovery_id: recovery.id,
+              amount_recovered: amount_recovered,
+              commission_percentage: commission_percentage,
+              commission_amount: commission_amount,
+              period_start: period_start.toISOString().split('T')[0],
+              period_end: period_end.toISOString().split('T')[0],
+              status: 'pending'
+            };
+
+            console.log('💰 Creating commission:', {
+              amount: `$${(amount_recovered / 100).toFixed(2)}`,
+              commission: `$${(commission_amount / 100).toFixed(2)}`,
+              user_id: stripeAccount.user_id
+            });
+
+            const { error: commissionError } = await supabase
+              .from('commissions')
+              .insert(commissionRecord);
+
+            if (commissionError) {
+              console.error('❌ Failed to create commission:', commissionError);
+            } else {
+              console.log('✅ Commission created successfully');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to update recovery status:', error);
+      }
+
+      await logWebhookEvent(event, 'processed');
+    }
+
+    return NextResponse.json({ received: true });
+
+  } catch (error: any) {
+    console.error('Webhook processing error:', error);
+    return NextResponse.json({ 
+      error: 'Webhook processing failed',
+      details: error.message 
+    }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'active',
+    message: 'Stripe webhook endpoint is running',
+    env: {
+      has_stripe_key: !!process.env.STRIPE_SECRET_KEY,
+      has_webhook_secret: !!process.env.STRIPE_WEBHOOK_SECRET
+    }
+  });
+}
+</file>
+
+<file path="app/dashboard/layout.tsx">
+// app/dashboard/layout.tsx
+'use client'
+
+import dynamic from 'next/dynamic'
+import { ReactNode } from "react"
+import Link from "next/link"
+import { CloudLightning } from "lucide-react"
+import { signOut } from "@/lib/backend/auth/auth"
+import { useRouter } from "next/navigation"
+
+// Dynamically import DeleteAccount with no SSR
+const DeleteAccount = dynamic(
+  () => import('./components/DeleteAccount'),
+  { ssr: false }
+)
+
+export default function Layout({ children }: { children: ReactNode }) {
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    try {
+      await signOut()
+      router.push('/login')
+    } catch (error) {
+      console.error('Failed to logout:', error)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-white text-slate-900">
+      <header className="border-b border-slate-200">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="relative">
+              <CloudLightning className="w-8 h-8 text-slate-600 fill-slate-50/50" />
+            </div>
+            <span className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-slate-600 transition-colors">
+              Mend
+            </span>
+          </Link>
+
+          <div className="flex items-center gap-4">
+            <DeleteAccount />
+            
+            <span className="text-sm text-slate-500">
+              Revenue Recovery
+            </span>
+              <a
+    href="mailto:contact@advisorly.uk?subject=Mend%20Support%20Request"
+    className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1 rounded hover:bg-slate-100"
+    target="_blank"
+    rel="noopener noreferrer"
+  >
+    Support
+  </a>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-slate-500 hover:text-slate-900 px-3 py-1 rounded hover:bg-slate-100"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-6 py-10">
+        {children}
+      </main>
+    </div>
+  )
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.129 0.042 264.695);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.129 0.042 264.695);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.129 0.042 264.695);
+  --primary: oklch(0.208 0.042 265.755);
+  --primary-foreground: oklch(0.984 0.003 247.858);
+  --secondary: oklch(0.968 0.007 247.896);
+  --secondary-foreground: oklch(0.208 0.042 265.755);
+  --muted: oklch(0.968 0.007 247.896);
+  --muted-foreground: oklch(0.554 0.046 257.417);
+  --accent: oklch(0.968 0.007 247.896);
+  --accent-foreground: oklch(0.208 0.042 265.755);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.929 0.013 255.508);
+  --input: oklch(0.929 0.013 255.508);
+  --ring: oklch(0.704 0.04 256.788);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.984 0.003 247.858);
+  --sidebar-foreground: oklch(0.129 0.042 264.695);
+  --sidebar-primary: oklch(0.208 0.042 265.755);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.968 0.007 247.896);
+  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
+  --sidebar-border: oklch(0.929 0.013 255.508);
+  --sidebar-ring: oklch(0.704 0.04 256.788);
+}
+
+.dark {
+  --background: oklch(0.129 0.042 264.695);
+  --foreground: oklch(0.984 0.003 247.858);
+  --card: oklch(0.208 0.042 265.755);
+  --card-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(0.208 0.042 265.755);
+  --popover-foreground: oklch(0.984 0.003 247.858);
+  --primary: oklch(0.929 0.013 255.508);
+  --primary-foreground: oklch(0.208 0.042 265.755);
+  --secondary: oklch(0.279 0.041 260.031);
+  --secondary-foreground: oklch(0.984 0.003 247.858);
+  --muted: oklch(0.279 0.041 260.031);
+  --muted-foreground: oklch(0.704 0.04 256.788);
+  --accent: oklch(0.279 0.041 260.031);
+  --accent-foreground: oklch(0.984 0.003 247.858);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.551 0.027 264.364);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.208 0.042 265.755);
+  --sidebar-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-accent: oklch(0.279 0.041 260.031);
+  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+</file>
+
+<file path="app/goodbye/page.tsx">
+// app/goodbye/page.tsx
+'use client'
+
+import { useEffect } from 'react'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { CheckCircle } from 'lucide-react'
+
+export default function GoodbyePage() {
+  useEffect(() => {
+    // Clear any remaining auth state
+    localStorage.clear()
+    sessionStorage.clear()
+  }, [])
+
+  return (
+    <div className="min-h-screen bg-white flex items-center justify-center px-6">
+      <div className="max-w-md text-center">
+        <div className="mb-6">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+        
+        <h1 className="text-2xl font-semibold text-slate-900 mb-3">
+          Account Deletion Requested
+        </h1>
+        
+        <div className="space-y-4 text-slate-600 mb-8">
+          <p>
+            Your account deletion has been initiated successfully.
+          </p>
+          
+          <div className="bg-slate-50 p-4 rounded-lg text-sm text-left">
+            <p className="font-medium text-slate-900 mb-2">What happens next:</p>
+            <ul className="space-y-1">
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>You've been logged out immediately</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>Your data will be permanently deleted in 30 days</span>
+              </li>
+              <li className="flex items-start">
+                <span className="text-green-500 mr-2">✓</span>
+                <span>If you change your mind, contact support within 30 days</span>
+              </li>
+            </ul>
+          </div>
+          
+          <p className="text-sm text-slate-500">
+            You'll receive a confirmation email shortly.
+          </p>
+        </div>
+        
+        <div className="space-y-3">
+          <Button asChild className="w-full">
+            <Link href="/landing">
+              Back to Homepage
+            </Link>
+          </Button>
+          
+          <Button variant="outline" asChild className="w-full">
+            <a href="mailto:contact@advisorly.uk">
+              Contact Support
+            </a>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="app/landing/components/CTA.tsx">
+import { Button } from "@/components/ui/button"
+
+export function FinalCTA() {
+  return (
+    <section className="relative bg-white py-20">
+      <div className="mx-auto max-w-6xl px-6">
+        <div className="rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 p-10 text-center text-white shadow-xl">
+          <h2 className="text-3xl font-semibold sm:text-4xl">
+            Recover revenue you already earned
+          </h2>
+
+          <p className="mx-auto mt-4 max-w-2xl text-slate-300">
+            Mend quietly fixes failed payments caused by expired or declined cards —
+            without pestering your customers or changing your workflow.
+          </p>
+
+          <div className="mt-8 flex flex-col justify-center gap-4 sm:flex-row">
+            <Button
+              size="lg"
+              className="bg-white text-slate-900 hover:bg-slate-100"
+              asChild
+            >
+              <a href="/sign-up">Connect Stripe</a>
+            </Button>
+
+            <Button
+              size="lg"
+              className="border border-white/70 bg-transparent text-white hover:bg-white/10"
+              asChild
+            >
+              <a href="#how-it-works">See how Mend works</a>
+            </Button>
+          </div>
+
+          <p className="mt-4 text-sm text-slate-400">
+            No monthly fees • Pay only on recovered revenue • Cancel anytime
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+</file>
+
+<file path="app/landing/components/FAQ.tsx">
+"use client"
+
+import { useState } from "react"
+import { ChevronDown, HelpCircle } from "lucide-react"
+
+export function FAQ() {
+  const faqs = [
+    {
+      question: "Is Mend really free to use?",
+      answer:
+        "Yes. There are no monthly fees. We only take a 10% commission on revenue we successfully recover for you.",
+    },
+    {
+      question: "How does Mend track payments?",
+      answer:
+        "Mend securely connects to your Stripe account and monitors failed payment events in real-time. Setup takes minutes.",
+    },
+    {
+      question: "Will this bother my customers?",
+      answer:
+        "No. Mend sends calm, personal emails designed to be helpful. We focus on fixing billing issues, not pestering users.",
+    },
+    {
+      question: "How is Mend different from dunning tools?",
+      answer:
+        "Standard tools send cold billing reminders. Mend uses human-sounding emails written in your voice to recover revenue personally.",
+    },
+  ]
+
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+  return (
+    <section id="faq" className="relative bg-white py-20">
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute left-1/2 top-0 h-[320px] w-[320px] -translate-x-1/2 rounded-full bg-slate-100 blur-3xl" />
+      </div>
+
+      <div className="mx-auto max-w-4xl px-6">
+        {/* Header */}
+        <div className="text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+            <HelpCircle className="h-3 w-3" />
+            FAQ
+          </div>
+
+          <h2 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            Common questions
+          </h2>
+          <p className="mt-4 text-lg text-slate-600">
+            Everything you need to know before connecting Stripe.
+          </p>
+        </div>
+
+        {/* Accordion */}
+        <div className="mt-12 space-y-4">
+          {faqs.map((faq, index) => {
+            const isOpen = openIndex === index
+
+            return (
+              <button
+                key={index}
+                onClick={() => setOpenIndex(isOpen ? null : index)}
+                className="w-full rounded-xl border border-slate-200 bg-white p-6 text-left transition hover:border-slate-300"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-slate-900">
+                    {faq.question}
+                  </span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-500 transition-transform ${
+                      isOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </div>
+
+                {isOpen && (
+                  <p className="mt-4 text-slate-600 leading-relaxed">
+                    {faq.answer}
+                  </p>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+</file>
+
+<file path="app/landing/components/Features.tsx">
+import { CheckCircle, Mail, MessageSquare, ShieldCheck, BarChart3 } from "lucide-react"
+
+export default function Features() {
+  const features = [
+    {
+      title: "Instant Detection",
+      description:
+        "Mend tracks failed Stripe payments in real-time to protect revenue the moment it's at risk.",
+      icon: <Mail className="h-6 w-6" />,
+      benefit: "No manual checks required",
+    },
+    {
+      title: "Human Touch",
+      description:
+        "Automated messages written in your voice that feel like a personal check-in.",
+      icon: <MessageSquare className="h-6 w-6" />,
+      benefit: "Customers feel helped, not chased",
+    },
+    {
+      title: "Email Recovery",
+      description:
+        "Proven email sequences that recover accounts before the subscription cancels.",
+      icon: <ShieldCheck className="h-6 w-6" />,
+      benefit: "Optimized for high open rates",
+    },
+    {
+      title: "Revenue Tracking",
+      description:
+        "Track exactly how much revenue has been mended and saved to your account.",
+      icon: <BarChart3 className="h-6 w-6" />,
+      benefit: "Clear, measurable ROI",
+    },
+  ]
+
+  return (
+    <section id="features" className="bg-white py-24">
+      <div className="mx-auto max-w-7xl px-6">
+
+        {/* Header */}
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            SaaS Revenue Recovery
+          </span>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            Recover revenue without
+            <span className="block text-slate-700">lifting a finger</span>
+          </h2>
+          <p className="mt-5 text-base text-slate-600">
+            Mend quietly fixes failed payments via automated emails 
+            so you can stay focused on building.
+          </p>
+        </div>
+
+        {/* Grid */}
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {features.map((feature) => (
+            <div
+              key={feature.title}
+              className="group rounded-xl border border-slate-200 bg-white p-6 transition-all duration-300 hover:border-slate-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-slate-900 text-white transition-all duration-300 group-hover:bg-slate-800 group-hover:scale-110">
+                {feature.icon}
+              </div>
+
+              <h3 className="text-lg font-medium text-slate-900 transition-colors duration-300 group-hover:text-slate-800">
+                {feature.title}
+              </h3>
+
+              <p className="mt-2 text-sm text-slate-600 transition-colors duration-300 group-hover:text-slate-700">
+                {feature.description}
+              </p>
+
+              <div className="mt-4 flex items-start gap-2 text-sm text-slate-700 transition-all duration-300 group-hover:text-slate-900">
+                <CheckCircle className="mt-0.5 h-4 w-4 text-green-500 transition-all duration-300 group-hover:text-green-600 group-hover:scale-110" />
+                <span>{feature.benefit}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+</file>
+
+<file path="app/landing/components/Footer.tsx">
+import Link from "next/link"
+import { CloudLightning } from "lucide-react"
+
+export function Footer() {
+  return (
+    <footer className="border-t border-slate-200 bg-white">
+      <div className="mx-auto max-w-7xl px-6 py-14">
+        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-3">
+
+         {/* Brand */}
+<Link href="/" className="flex items-center gap-2 group">
+  <div className="relative">
+    {/* The main cloud icon */}
+    <CloudLightning className="w-8 h-8 text-slate-600 fill-slate-50/50" />
+  
+  </div>
+  
+  <span className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-slate-600 transition-colors">
+    Mend
+  </span>
+</Link>
+
+          {/* Product */}
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-900">
+              Product
+            </h4>
+            <ul className="mt-4 space-y-2 text-sm text-slate-600">
+              <li>
+                <Link href="#features" className="hover:text-slate-900">
+                  Features
+                </Link>
+              </li>
+              <li>
+                <Link href="#how-it-works" className="hover:text-slate-900">
+                  How it works
+                </Link>
+              </li>
+              <li>
+                <Link href="#pricing" className="hover:text-slate-900">
+                  Pricing
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Legal */}
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-900">
+              Legal
+            </h4>
+            <ul className="mt-4 space-y-2 text-sm text-slate-600">
+              <li>
+                <Link href="/privacy" className="hover:text-slate-900">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-slate-900">
+                  Terms of Service
+                </Link>
+              </li>
+                    <a
+        href="mailto:contact@advisorly.uk?subject=Mend%20Support%20Request"
+        className="hover:text-slate-900"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Support
+      </a>
+            </ul>
+          </div>
+        </div>
+
+        {/* Bottom */}
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-200 pt-6 sm:flex-row">
+          <p className="text-sm text-slate-500">
+            © {new Date().getFullYear()} Mend. All rights reserved.
+          </p>
+          <p className="text-sm text-slate-500">
+            Built for SaaS founders.
+          </p>
+        </div>
+      </div>
+    </footer>
+  )
+}
+</file>
+
+<file path="app/landing/components/Hero.tsx">
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { ArrowRight } from "lucide-react"
+import { CloudLightning, Sparkles} from "lucide-react"
+
+export default function Hero() {
+  return (
+    <div className="relative bg-white">
+      {/* Navbar */}
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+
+         {/* Brand */}
+<Link href="/" className="flex items-center gap-2 group">
+  <div className="relative">
+    {/* The main cloud icon */}
+    <CloudLightning className="w-8 h-8 text-slate-600 fill-slate-50/50" />
+  
+  </div>
+  
+  <span className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-slate-600 transition-colors">
+    Mend
+  </span>
+</Link>
+
+          {/* Nav links */}
+          <nav className="hidden items-center gap-8 text-sm text-slate-600 md:flex">
+            {["How it works", "Pricing", "FAQ"].map((item) => (
+              <Link
+                key={item}
+                href={`#${item.toLowerCase().replace(/\s/g, "-")}`}
+                className="relative transition-colors hover:text-slate-900
+                  after:absolute after:-bottom-1 after:left-0 after:h-px after:w-0
+                  after:bg-slate-900 after:transition-all hover:after:w-full"
+              >
+                {item}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="hidden text-sm font-medium text-slate-600 hover:text-slate-900 md:block"
+            >
+              Sign in
+            </Link>
+
+            <Button 
+  size="sm" 
+  className="h-9 rounded-md bg-slate-900 hover:bg-slate-800"
+  asChild
+>
+  <Link href="/sign-up">Recover revenue</Link>
+</Button>
+          </div>
+
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="relative">
+        {/* Background (softened) */}
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-48 left-1/2 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-slate-200/30 blur-3xl" />
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-white to-white" />
+        </div>
+
+        <div className="mx-auto max-w-7xl px-6 pt-24 pb-20">
+          <div className="mx-auto max-w-3xl text-center">
+
+            {/* Eyebrow */}
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+              AI revenue recovery agent for SaaS
+            </div>
+
+            {/* Headline */}
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+              Recover failed payments,
+              <span className="block text-slate-700">
+                without chasing customers
+              </span>
+            </h1>
+
+            {/* Subheading */}
+            <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-600">
+              Mend fixes <span className="text-slate-900 font-medium">involuntary churn</span>.
+              When a customer’s card fails, Mend reaches out once like a human 
+              recovers the payment, and stops.
+            </p>
+
+            {/* CTAs */}
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+              <Button size="lg" className="h-11 px-8 bg-slate-900 hover:bg-slate-800" >
+                <Link href="/sign-up">Start recovering revenue</Link>
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+              <Link
+                href="#how-it-works"
+                className="text-sm font-medium text-slate-600 hover:text-slate-900"
+              >
+                See how it works
+              </Link>
+            </div>
+          </div>
+
+          {/* Message preview */}
+          <div className="relative mx-auto mt-16 max-w-3xl">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b px-4 py-2 text-xs text-slate-500">
+                Example recovery message
+              </div>
+              <div className="p-6 text-sm leading-relaxed text-slate-700">
+                <strong className="text-slate-900 font-medium">Hey Alex —</strong>
+                <br /><br />
+                Just a quick heads-up that your card didn’t go through this month.
+                No rush you can update it here when it’s convenient.
+                <br /><br />
+                <span className="text-slate-500">— Sam</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+</file>
+
+<file path="app/landing/components/HowItWorks.tsx">
+import { CheckCircle2, Zap, Mail, BarChart3 } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
+
+export default function HowItWorks() {
+  const steps = [
+    {
+      step: "01",
+      title: "Real-time Monitoring",
+      description:
+        "Mend connects to Stripe to catch failed payments the second they happen.",
+      features: [
+        "Secure Stripe integration",
+        "Instant error detection",
+        "Zero-code setup",
+      ],
+      icon: <Zap className="h-5 w-5" />,
+    },
+    {
+      step: "02",
+      title: "Personal Outreach",
+      description:
+        "A personal, founder-style email is sent to help the customer fix their billing.",
+      features: [
+        "Human-sounding tone",
+        "Email-first approach",
+        "Automated follow-ups",
+      ],
+      icon: <Mail className="h-5 w-5" />,
+    },
+    {
+      step: "03",
+      title: "Revenue Restored",
+      description:
+        "Mend tracks the recovery and syncs the successful payment back to Stripe.",
+      features: [
+        "Hands-off recovery",
+        "Success tracking",
+        "No manual data entry",
+      ],
+      icon: <BarChart3 className="h-5 w-5" />,
+    },
+  ]
+
+  return (
+    <section id="how-it-works" className="bg-white py-24">
+      <div className="mx-auto max-w-7xl px-6">
+
+        {/* Header */}
+        <div className="mx-auto max-w-3xl text-center">
+          <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            <CheckCircle2 className="h-3 w-3" />
+            Simple by design
+          </span>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            Set it up once.
+            <span className="block text-slate-700">Mend does the rest.</span>
+          </h2>
+          <p className="mt-5 text-base text-slate-600">
+            Mend only acts when revenue is at risk, so you never have to
+            babysit a dashboard.
+          </p>
+        </div>
+
+        {/* Steps */}
+        <div className="mt-20 grid gap-10 md:grid-cols-3">
+          {steps.map((step) => (
+            <Card 
+              key={step.step} 
+              className="group border-slate-200 transition-all duration-300 hover:border-slate-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+            >
+              <CardContent className="p-6">
+                <div className="mb-6 flex items-center gap-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white text-sm font-medium transition-all duration-300 group-hover:bg-slate-800 group-hover:scale-110">
+                    {step.step}
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-700 transition-all duration-300 group-hover:bg-slate-100 group-hover:scale-110">
+                    {step.icon}
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-medium text-slate-900 transition-colors duration-300 group-hover:text-slate-800">
+                  {step.title}
+                </h3>
+                <p className="mt-3 text-sm text-slate-600 transition-colors duration-300 group-hover:text-slate-700">
+                  {step.description}
+                </p>
+
+                <ul className="mt-6 space-y-3">
+                  {step.features.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2 text-sm transition-all duration-300 group-hover:text-slate-900">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-500 transition-all duration-300 group-hover:text-green-600 group-hover:scale-110" />
+                      <span className="text-slate-700 transition-colors duration-300 group-hover:text-slate-900">{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <div className="mt-16 text-center">
+          <Button size="lg" className="h-11 px-8 bg-slate-900 hover:bg-black transition-all duration-300 hover:scale-105 hover:shadow-lg">
+           <Link href="/sign-up">Start recovering revenue</Link>
+          </Button>
+          <p className="mt-3 text-sm text-slate-500">
+            No setup fees • Connect Stripe in minutes
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+</file>
+
+<file path="app/landing/components/Pricing.tsx">
+import { Button } from "@/components/ui/button"
+import { Check } from "lucide-react"
+import Link from "next/link"
+
+export default function Pricing() {
+  const plans = [
+    {
+      name: "Mend",
+      price: "$0",
+      description: "Only pay when we recover revenue for you.",
+      features: [
+        "Unlimited real-time monitoring",
+        "Automated email recovery",
+        "Human-style outreach",
+        "Recovery guardrails",
+        "Success dashboard",
+      ],
+      cta: "Start recovering revenue",
+    },
+  ]
+
+  return (
+    <section id="pricing" className="bg-white py-24">
+      <div className="mx-auto max-w-7xl px-6">
+
+        {/* Header */}
+        <div className="mx-auto max-w-3xl text-center">
+          <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+            Performance Pricing
+          </span>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            Mend only makes money
+            <span className="block text-slate-700">when you do</span>
+          </h2>
+          <p className="mt-5 text-base text-slate-600">
+            Zero monthly fees. Mend takes a 10% commission 
+            only on successfully recovered revenue.
+          </p>
+        </div>
+
+        {/* Card */}
+        <div className="mx-auto mt-16 max-w-md">
+          <div className="group rounded-xl border border-slate-200 bg-white p-8 text-center transition-all duration-300 hover:border-slate-300 hover:shadow-xl hover:-translate-y-1 cursor-pointer">
+            <div className="text-4xl font-semibold text-slate-900 transition-all duration-300 group-hover:text-slate-800 group-hover:scale-105">
+              $0 / mo
+            </div>
+            <p className="mt-2 text-slate-600 transition-colors duration-300 group-hover:text-slate-700">
+              10% of recovered revenue
+            </p>
+
+            <ul className="mt-8 space-y-4 text-left">
+              {plans[0].features.map((feature) => (
+                <li key={feature} className="flex gap-2 text-sm text-slate-700 transition-all duration-300 group-hover:text-slate-900">
+                  <Check className="mt-0.5 h-4 w-4 text-green-500 flex-shrink-0 transition-all duration-300 group-hover:text-green-600 group-hover:scale-110" />
+                  <span className="transition-colors duration-300">{feature}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Button className="mt-8 w-full bg-slate-900 hover:bg-black transition-all duration-300 group-hover:scale-[1.02] group-hover:shadow-lg">
+             <Link href="/sign-up">Start recovering revenue</Link> 
+            </Button>
+
+            <p className="mt-4 text-xs text-slate-500 transition-colors duration-300 group-hover:text-slate-600">
+              No credit card required • Connect in minutes
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+</file>
+
+<file path="app/landing/page.tsx">
+'use client'
+import { FinalCTA } from "./components/CTA"
+import Features from "./components/Features"
+import { Footer } from "./components/Footer"
+import Hero from "./components/Hero"
+import HowItWorks from "./components/HowItWorks"
+import Pricing from "./components/Pricing"
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { getCurrentUser } from '@/lib/backend/auth/auth'
+import { FAQ } from "./components/FAQ"
+
+
+
+export default function LandingPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (user) {
+          router.push('/dashboard')
+        }
+      } catch (error) {
+        // No user, stay on landing page
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  return (
+    <div className="min-h-screen">
+      <Hero />
+      <Features />
+      <HowItWorks />
+      <Pricing />
+      <FAQ />
+      <FinalCTA />
+        <Footer />
+    </div>
+  )
+}
+</file>
+
+<file path="app/reset-password/page.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowLeft, Lock } from 'lucide-react'
+import { supabase } from '@/lib/backend/supabaseClient'
+
+export default function ResetPasswordPage() {
+  const router = useRouter()
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Check URL for reset token (both hash and query params)
+    const getTokenFromUrl = () => {
+      // Check query parameters first
+      const searchParams = new URLSearchParams(window.location.search)
+      let token = searchParams.get('token') || searchParams.get('access_token')
+      let type = searchParams.get('type')
+      
+      // If not in query, check hash
+      if (!token && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        token = hashParams.get('token') || hashParams.get('access_token')
+        type = hashParams.get('type')
+      }
+      
+      if (type === 'recovery' && token) {
+        setAccessToken(token)
+      }
+    }
+
+    // Only run on client side
+    if (typeof window !== 'undefined') {
+      getTokenFromUrl()
+    }
+  }, [])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      if (accessToken) {
+        // If we have a token from URL, update password with it
+        const { error } = await supabase.auth.updateUser({
+          password: password
+        })
+
+        if (error) throw error
+      } else {
+        // For direct access, user needs to be logged in
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          throw new Error('You must be logged in or use the reset link from your email')
+        }
+
+        const { error } = await supabase.auth.updateUser({
+          password: password
+        })
+
+        if (error) throw error
+      }
+
+      setSuccess(true)
+      setTimeout(() => {
+        router.push('/login')
+      }, 3000)
+    } catch (error: any) {
+      setError(error.message || 'Failed to reset password')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+      <div className="w-full max-w-md">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Link href="/login" className="text-slate-500 hover:text-slate-900">
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+              <CardTitle className="text-center flex-1">Create new password</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {success ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Lock className="h-6 w-6 text-green-600" />
+                </div>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Password updated!</h3>
+                <p className="text-slate-600 mb-6">
+                  Your password has been successfully reset. You'll be redirected to login in a few seconds.
+                </p>
+                <Button asChild className="w-full">
+                  <Link href="/login">Go to login</Link>
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-slate-600 mb-6 text-center">
+                  Enter your new password below.
+                </p>
+                
+                {!accessToken && (
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Note:</strong> You need to use the link from your email to reset your password.
+                      If you came here directly, please use the "Forgot password" link on the login page.
+                    </p>
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      New password
+                    </label>
+                    <Input
+                      type="password"
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Confirm new password
+                    </label>
+                    <Input
+                      type="password"
+                      placeholder="Confirm your password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="text-sm text-red-500 bg-red-50 p-3 rounded">
+                      {error}
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Updating...' : 'Reset password'}
+                  </Button>
+                </form>
+
+                <div className="mt-6 text-center">
+                  <Link
+                    href="/login"
+                    className="text-sm text-slate-500 hover:text-slate-900"
+                  >
+                    Back to login
+                  </Link>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+    env: {
+    ADMIN_ACCESS_CODE: process.env.ADMIN_ACCESS_CODE,
+  },
+};
+
+export default nextConfig;
+</file>
+
+<file path="package.json">
+{
+  "name": "mendv2",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@supabase/supabase-js": "^2.90.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "groq-sdk": "^0.37.0",
+    "lucide-react": "^0.562.0",
+    "next": "16.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "resend": "^6.7.0",
+    "stripe": "^20.1.2",
+    "tailwind-merge": "^3.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20.19.29",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="public/icon.svg">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    /* Default (Light Mode) - Dark Blue/Slate */
+    path { stroke: #0f172a; }
+    
+    /* Dark Mode - Pure White */
+    @media (prefers-color-scheme: dark) {
+      path { stroke: #ffffff; }
+    }
+  </style>
+  <path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/>
+  <path d="m13 12-3 5h4l-3 5"/>
+</svg>
+</file>
+
+</files>
