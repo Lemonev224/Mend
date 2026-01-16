@@ -15,24 +15,31 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+  e.preventDefault()
+  setError('')
+  setLoading(true)
 
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
+  try {
+    // HARDCODED FIX - Change this line only:
+    const redirectTo = "https://mendapp.tech/reset-password";
+    
+    // Add logging to debug
+    console.log('Reset password redirect URL:', redirectTo);
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectTo, // Use the hardcoded URL
+    })
 
-      if (error) throw error
+    if (error) throw error
 
-      setSuccess(true)
-    } catch (error: any) {
-      setError(error.message || 'Failed to send reset email')
-    } finally {
-      setLoading(false)
-    }
+    setSuccess(true)
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    setError(error.message || 'Failed to send reset email')
+  } finally {
+    setLoading(false)
   }
+}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
