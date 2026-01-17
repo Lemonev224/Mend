@@ -8,8 +8,6 @@ import { Input } from "@/components/ui/input"
 import { useState } from "react"
 import { signUp } from '@/lib/backend/auth/auth'
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Mail, CheckCircle, AlertCircle, RefreshCw, ArrowRight, Shield } from 'lucide-react'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -18,9 +16,6 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
-  const [resendLoading, setResendLoading] = useState(false)
-  const [resendSuccess, setResendSuccess] = useState(false)
-  const [resendCount, setResendCount] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -89,63 +84,6 @@ export default function SignupPage() {
     }
   }
 
-  const handleResendConfirmation = async () => {
-    if (resendCount >= 3) {
-      setError('Too many resend attempts. Please wait 5 minutes or contact support.')
-      return
-    }
-
-    setResendLoading(true)
-    setResendSuccess(false)
-    setError('')
-
-    try {
-      const response = await fetch('/api/auth/resend-confirmation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to resend confirmation email')
-      }
-
-      setResendSuccess(true)
-      setResendCount(prev => prev + 1)
-      
-      // Show success message for 5 seconds
-      setTimeout(() => {
-        setResendSuccess(false)
-      }, 5000)
-
-    } catch (err: any) {
-      console.error('Resend error:', err)
-      setError(err.message || 'Failed to resend confirmation email')
-    } finally {
-      setResendLoading(false)
-    }
-  }
-
-  const handleOpenEmailClient = () => {
-    // Create mailto link for popular email clients
-    const gmailLink = `https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent('noreply@mendapp.tech')}+in%3Aanywhere`
-    const outlookLink = `https://outlook.live.com/mail/0/inbox/search/from%3A${encodeURIComponent('noreply@mendapp.tech')}`
-    
-    // Try to detect email client
-    const userAgent = navigator.userAgent.toLowerCase()
-    
-    if (userAgent.includes('gmail') || userAgent.includes('google')) {
-      window.open(gmailLink, '_blank')
-    } else if (userAgent.includes('outlook') || userAgent.includes('microsoft')) {
-      window.open(outlookLink, '_blank')
-    } else {
-      // Default mailto link
-      window.location.href = `mailto:?subject=Check your Mend confirmation email`
-    }
-  }
-
   return (
     <div className="relative min-h-screen overflow-hidden bg-white">
       <div className="absolute -top-40 -right-40 h-[480px] w-[480px] rounded-full bg-violet-200/40 blur-3xl" />
@@ -182,43 +120,124 @@ export default function SignupPage() {
               </p>
             </div>
 
-          {success && (
-  <div className="space-y-6">
-    {/* ... existing success content ... */}
-    
-    {/* Add this test verification button for development */}
-    {process.env.NODE_ENV === 'development' && (
-      <div className="border-t pt-4">
-        <Button
-          variant="outline"
-          className="w-full border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-          onClick={async () => {
-            // For testing: Auto-confirm the user
-            try {
-              const { error } = await fetch('/api/auth/verify-test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-              }).then(r => r.json())
-              
-              if (!error) {
-                alert('Test verification successful! You can now login.')
-                router.push('/login')
-              }
-            } catch (err) {
-              console.error('Test verification failed:', err)
-            }
-          }}
-        >
-          🚀 DEV ONLY: Auto-Verify Email
-        </Button>
-        <p className="text-xs text-amber-600 mt-2">
-          This button only works in development. In production, users must click the email link.
-        </p>
-      </div>
-    )}
-  </div>
-  )}
+            {success ? (
+              <div className="text-center py-8">
+                <div className="text-green-500 mb-4">
+                  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-slate-900 mb-2">Check your email!</h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  We've sent a confirmation link to <strong>{email}</strong>.
+                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Important:</strong> You must click the confirmation link in your email before you can log in.
+                  </p>
+                </div>
+                <p className="text-sm text-slate-500 mb-6">
+                  Didn't receive the email? Check your spam folder.
+                </p>
+                <div className="mt-6 space-y-3">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={async () => {
+                      // Resend confirmation email
+                      try {
+                        const response = await fetch('/api/auth/resend-confirmation', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ email })
+                        })
+                        
+                        const data = await response.json()
+                        
+                        if (response.ok) {
+                          alert('Confirmation email has been resent! Please check your inbox.')
+                        } else {
+                          alert('Failed to resend email: ' + (data.error || 'Unknown error'))
+                        }
+                      } catch (err) {
+                        console.error('Resend error:', err)
+                        alert('Failed to resend confirmation email.')
+                      }
+                    }}
+                  >
+                    Resend Confirmation
+                  </Button>
+                  <Button asChild className="w-full">
+                    <Link href="/login">Go to Login</Link>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Full Name
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Alex Johnson"
+                    className="mt-1"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Work email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="you@company.com"
+                    className="mt-1"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="At least 8 characters"
+                    className="mt-1"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
+                    {error}
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? 'Creating account...' : 'Create account'}
+                </Button>
+              </form>
+            )}
+
+            <p className="mt-6 text-center text-sm text-slate-500">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-slate-900 hover:underline"
+              >
+                Sign in
+              </Link>
+            </p>
           </div>
         </div>
       </div>
