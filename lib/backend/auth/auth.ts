@@ -5,6 +5,7 @@ export async function signUp(email: string, password: string, fullName: string) 
     email,
     password,
     options: {
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard`,
       data: {
         full_name: fullName,
       }
@@ -21,14 +22,17 @@ export async function signIn(email: string, password: string) {
     password,
   })
   
-  if (error) throw error
+  if (error) {
+    // Check if it's an email not confirmed error
+    if (error.message === 'Email not confirmed') {
+      throw new Error('Please check your email and click the verification link before logging in. If you didn\'t receive it, use the "Resend confirmation" button.')
+    }
+    throw error
+  }
   return data
 }
 
-export async function signOut() {
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
-}
+
 
 // lib/backend/auth/auth.ts
 export async function getCurrentUser() {

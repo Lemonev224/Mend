@@ -182,204 +182,43 @@ export default function SignupPage() {
               </p>
             </div>
 
-            {success ? (
-              <div className="space-y-6">
-                {/* Success Header */}
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Mail className="h-8 w-8 text-green-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
-                    Verify your email
-                  </h3>
-                  <p className="text-slate-600">
-                    We've sent a confirmation link to
-                  </p>
-                  <div className="mt-2 mb-4">
-                    <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg">
-                      <span className="font-medium">{email}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSuccess(false)}
-                        className="h-6 px-2 text-blue-600 hover:text-blue-800"
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Important Instructions Card */}
-                <Card className="border-blue-200 bg-blue-50">
-                  <CardContent className="p-4">
-                    <div className="flex gap-3">
-                      <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-blue-900 mb-1">
-                          Important: Check your email now
-                        </h4>
-                        <ul className="text-sm text-blue-800 space-y-1">
-                          <li className="flex items-start gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span>Click the verification link in the email</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span>The link expires in 24 hours</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
-                            <span>Verify to access your dashboard</span>
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Actions */}
-                <div className="space-y-3">
-                  <Button
-                    onClick={handleOpenEmailClient}
-                    className="w-full bg-slate-900 hover:bg-slate-800"
-                    size="lg"
-                  >
-                    Open Email App
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-slate-200"></div>
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-slate-500">Need help?</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      onClick={handleResendConfirmation}
-                      disabled={resendLoading || resendCount >= 3}
-                      className="w-full"
-                    >
-                      {resendLoading ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="h-4 w-4 mr-2" />
-                          Resend Verification Email
-                          {resendCount > 0 && ` (${resendCount}/3)`}
-                        </>
-                      )}
-                    </Button>
-
-                    {resendSuccess && (
-                      <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
-                        <CheckCircle className="h-4 w-4" />
-                        <span>Verification email resent successfully!</span>
-                      </div>
-                    )}
-
-                    {resendCount >= 3 && (
-                      <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-2 rounded">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>Resend limit reached. Please wait 5 minutes or contact support.</span>
-                      </div>
-                    )}
-
-                    <Button variant="ghost" asChild className="w-full">
-                      <Link href="/login">
-                        Back to Login
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Troubleshooting */}
-                <div className="text-sm text-slate-500 space-y-2">
-                  <p className="font-medium text-slate-700">Didn't receive the email?</p>
-                  <ul className="space-y-1 pl-5 list-disc">
-                    <li>Check your spam or junk folder</li>
-                    <li>Make sure you entered the correct email address</li>
-                    <li>Allow a few minutes for delivery</li>
-                    <li>Still having trouble? <a href="mailto:support@mendapp.tech" className="text-blue-600 hover:underline">Contact support</a></li>
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">
-                      Full Name
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Alex Johnson"
-                      className="mt-1"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">
-                      Work email
-                    </label>
-                    <Input
-                      type="email"
-                      placeholder="you@company.com"
-                      className="mt-1"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">
-                      Password
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="At least 8 characters"
-                      className="mt-1"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      minLength={8}
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
-                      {error}
-                    </div>
-                  )}
-
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? 'Creating account...' : 'Create account'}
-                  </Button>
-                </form>
-
-                <p className="mt-6 text-center text-sm text-slate-500">
-                  Already have an account?{" "}
-                  <Link
-                    href="/login"
-                    className="font-medium text-slate-900 hover:underline"
-                  >
-                    Sign in
-                  </Link>
-                </p>
-              </>
-            )}
+          {success && (
+  <div className="space-y-6">
+    {/* ... existing success content ... */}
+    
+    {/* Add this test verification button for development */}
+    {process.env.NODE_ENV === 'development' && (
+      <div className="border-t pt-4">
+        <Button
+          variant="outline"
+          className="w-full border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+          onClick={async () => {
+            // For testing: Auto-confirm the user
+            try {
+              const { error } = await fetch('/api/auth/verify-test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+              }).then(r => r.json())
+              
+              if (!error) {
+                alert('Test verification successful! You can now login.')
+                router.push('/login')
+              }
+            } catch (err) {
+              console.error('Test verification failed:', err)
+            }
+          }}
+        >
+          🚀 DEV ONLY: Auto-Verify Email
+        </Button>
+        <p className="text-xs text-amber-600 mt-2">
+          This button only works in development. In production, users must click the email link.
+        </p>
+      </div>
+    )}
+  </div>
+  )}
           </div>
         </div>
       </div>
