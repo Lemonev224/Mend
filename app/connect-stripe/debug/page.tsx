@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from '@/lib/backend/supabaseClient'
@@ -9,11 +9,10 @@ import { getCurrentUser } from '@/lib/backend/auth/auth'
 
 export default function ConnectStripeDebug() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [user, setUser] = useState<any>(null)
   const [stripeAccount, setStripeAccount] = useState<any>(null)
   const [logs, setLogs] = useState<string[]>([])
-  const [urlInfo, setUrlInfo] = useState<any>({})
+  const [envInfo, setEnvInfo] = useState<any>({})
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
@@ -22,28 +21,27 @@ export default function ConnectStripeDebug() {
 
   useEffect(() => {
     checkStatus()
-    checkUrlParams()
-  }, [])
-
-  const checkUrlParams = () => {
-    const params: any = {}
-    searchParams.forEach((value, key) => {
-      params[key] = value
+    // Check URL parameters from client side
+    const urlParams = new URLSearchParams(window.location.search)
+    const paramsObj: any = {}
+    urlParams.forEach((value, key) => {
+      paramsObj[key] = value
     })
-    setUrlInfo(params)
-    addLog(`URL params: ${JSON.stringify(params)}`)
-  }
+    if (Object.keys(paramsObj).length > 0) {
+      addLog(`URL params found: ${JSON.stringify(paramsObj)}`)
+    }
+  }, [])
 
   const checkStatus = async () => {
     try {
       const user = await getCurrentUser()
       if (!user) {
-        addLog('No user found')
+        addLog('No user found - redirecting to login')
         router.push('/login')
         return
       }
       setUser(user)
-      addLog(`User: ${user.email} (${user.id})`)
+      addLog(`User found: ${user.email} (${user.id})`)
 
       // Check existing Stripe connection
       const { data, error } = await supabase
@@ -57,10 +55,18 @@ export default function ConnectStripeDebug() {
       } else if (data) {
         setStripeAccount(data)
         addLog(`Stripe account found: ${data.stripe_account_id}`)
-        addLog(`Account details: ${JSON.stringify(data.account_details, null, 2)}`)
+        addLog(`Account status: ${data.account_details?.charges_enabled ? 'Active' : 'Pending'}`)
       } else {
-        addLog('No Stripe account found')
+        addLog('No Stripe account found for this user')
       }
+
+      // Get environment info
+      setEnvInfo({
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+        hasStripeClientId: !!process.env.NEXT_PUBLIC_STRIPE_CLIENT_ID,
+        hasStripeSecretKey: !!process.env.STRIPE_SECRET_KEY,
+      })
+
     } catch (error: any) {
       addLog(`Error: ${error.message}`)
     }
@@ -83,37 +89,42 @@ export default function ConnectStripeDebug() {
     authUrl.searchParams.append('state', user.id)
     authUrl.searchParams.append('stripe_user[email]', user.email!)
 
-    addLog(`Generated URL: ${authUrl.toString()}`)
+    addLog(`Generated Connect URL: ${authUrl.toString()}`)
     
-    return authUrl.toString()
-  }
-
-  const testDirectConnect = () => {
-    const url = generateConnectUrl()
-    if (url) {
-      window.open(url, '_blank')
-    }
+    // Open in new tab
+    window.open(authUrl.toString(), '_blank')
+    
+    // Also copy to clipboard
+    navigator.clipboard.writeText(authUrl.toString())
+    addLog('URL copied to clipboard!')
   }
 
   const testApiConnect = async () => {
     try {
       addLog('Testing /api/connect endpoint...')
       const response = await fetch('/api/connect')
-      const data = await response.json()
-      addLog(`API Response: ${JSON.stringify(data)}`)
+      const text = await response.text()
+      try {
+        const data = JSON.parse(text)
+        addLog(`API Response: ${JSON.stringify(data, null, 2)}`)
+      } catch {
+        addLog(`Raw response (not JSON): ${text.substring(0, 200)}...`)
+      }
     } catch (error: any) {
       addLog(`API Error: ${error.message}`)
     }
   }
 
-  const simulateCallback = () => {
-    // This is what Stripe would send back
-    const mockCode = 'ac_123_test'
-    const mockState = user?.id || 'test_user_id'
+  const testManualConnect = () => {
+    if (!process.env.NEXT_PUBLIC_STRIPE_CLIENT_ID) {
+      addLog('ERROR: Stripe Client ID not found in environment variables')
+      return
+    }
     
-    const callbackUrl = `https://mendapp.tech/api/connect?code=${mockCode}&state=${mockState}`
-    addLog(`Mock callback URL: ${callbackUrl}`)
-    window.open(callbackUrl, '_blank')
+    const manualUrl = `https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${process.env.NEXT_PUBLIC_STRIPE_CLIENT_ID}&scope=read_write&redirect_uri=https://mendapp.tech/api/connect`
+    
+    addLog(`Manual URL (for testing without user): ${manualUrl}`)
+    window.open(manualUrl, '_blank')
   }
 
   return (
@@ -122,7 +133,7 @@ export default function ConnectStripeDebug() {
         <h1 className="text-3xl font-bold mb-6">Stripe Connect Debugger</h1>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Info */}
+          {/* Left Column - Status */}
           <div className="lg:col-span-1 space-y-6">
             <Card>
               <CardHeader>
@@ -134,7 +145,7 @@ export default function ConnectStripeDebug() {
                   {user ? (
                     <div className="text-sm text-gray-600">
                       <p>Email: {user.email}</p>
-                      <p>ID: {user.id}</p>
+                      <p className="truncate">ID: {user.id}</p>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">No user</p>
@@ -145,8 +156,10 @@ export default function ConnectStripeDebug() {
                   <h3 className="font-medium">Stripe Account</h3>
                   {stripeAccount ? (
                     <div className="text-sm text-gray-600">
-                      <p>Account ID: {stripeAccount.stripe_account_id}</p>
-                      <p className="text-green-600">✅ Connected</p>
+                      <p className="truncate">ID: {stripeAccount.stripe_account_id}</p>
+                      <p className={`${stripeAccount.account_details?.charges_enabled ? 'text-green-600' : 'text-amber-600'}`}>
+                        {stripeAccount.account_details?.charges_enabled ? '✅ Active' : '⚠️ Pending'}
+                      </p>
                     </div>
                   ) : (
                     <p className="text-sm text-gray-500">Not connected</p>
@@ -156,21 +169,11 @@ export default function ConnectStripeDebug() {
                 <div>
                   <h3 className="font-medium">Environment</h3>
                   <div className="text-sm text-gray-600">
-                    <p>App URL: {process.env.NEXT_PUBLIC_APP_URL}</p>
-                    <p>Has Client ID: {process.env.NEXT_PUBLIC_STRIPE_CLIENT_ID ? '✅' : '❌'}</p>
+                    <p>App URL: {envInfo.appUrl || 'Not set'}</p>
+                    <p>Stripe Client ID: {envInfo.hasStripeClientId ? '✅' : '❌'}</p>
+                    <p>Stripe Secret Key: {envInfo.hasStripeSecretKey ? '✅' : '❌'}</p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>URL Parameters</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto">
-                  {JSON.stringify(urlInfo, null, 2)}
-                </pre>
               </CardContent>
             </Card>
           </div>
@@ -182,16 +185,16 @@ export default function ConnectStripeDebug() {
                 <CardTitle>Test Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button onClick={testDirectConnect} className="w-full">
-                  Generate Stripe Connect URL
+                <Button onClick={generateConnectUrl} className="w-full">
+                  Connect with Current User
                 </Button>
                 
-                <Button onClick={simulateCallback} variant="outline" className="w-full">
-                  Simulate Stripe Callback
+                <Button onClick={testManualConnect} variant="outline" className="w-full">
+                  Connect Without User
                 </Button>
                 
                 <Button onClick={testApiConnect} variant="outline" className="w-full">
-                  Test /api/connect Endpoint
+                  Test /api/connect
                 </Button>
                 
                 <Button onClick={checkStatus} variant="ghost" className="w-full">
@@ -207,36 +210,6 @@ export default function ConnectStripeDebug() {
                 </Button>
               </CardContent>
             </Card>
-
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>Quick Links</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <a 
-                  href="https://dashboard.stripe.com/connect/accounts/overview" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-sm text-blue-600 hover:underline"
-                >
-                  Stripe Connect Dashboard
-                </a>
-                <a 
-                  href="https://dashboard.stripe.com/settings/connect" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="block text-sm text-blue-600 hover:underline"
-                >
-                  Stripe Connect Settings
-                </a>
-                <a 
-                  href="https://mendapp.tech/connect-stripe" 
-                  className="block text-sm text-blue-600 hover:underline"
-                >
-                  Connect Stripe Page
-                </a>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Right Column - Logs */}
@@ -244,7 +217,7 @@ export default function ConnectStripeDebug() {
             <Card className="h-full">
               <CardHeader>
                 <div className="flex justify-between items-center">
-                  <CardTitle>Logs</CardTitle>
+                  <CardTitle>Debug Logs</CardTitle>
                   <Button 
                     size="sm" 
                     variant="outline"
@@ -270,6 +243,23 @@ export default function ConnectStripeDebug() {
             </Card>
           </div>
         </div>
+
+        {/* Instructions */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>How to Debug Stripe Connect</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ol className="list-decimal pl-5 space-y-2 text-sm text-gray-600">
+              <li>Click "Connect with Current User" to test the normal flow</li>
+              <li>Check the logs for the generated URL</li>
+              <li>Authorize the connection on Stripe</li>
+              <li>Stripe will redirect back to `/api/connect?code=...&state=...`</li>
+              <li>That should process and redirect to `/dashboard?connected=true`</li>
+              <li>If it redirects back to `/connect-stripe`, check the error in the URL</li>
+            </ol>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
