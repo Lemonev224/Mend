@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
   try {
 // Use the verification endpoint instead
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mendapp.tech'
-const redirectTo = `${siteUrl}/api/auth/verify?redirect_to=/reset-password`
+const redirectTo = "https://mendapp.tech/reset-handler"
     
     // Add logging to debug
     console.log('Reset password redirect URL:', redirectTo);
