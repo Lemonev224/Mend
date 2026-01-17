@@ -16,54 +16,26 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error('Stripe Connect error:', error, errorDescription)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=${error}`)
+    // FIX: Clean up the base URL
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') || ''
+    return NextResponse.redirect(`${baseUrl}/connect-stripe?error=${error}`)
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=missing_params`)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') || ''
+    return NextResponse.redirect(`${baseUrl}/connect-stripe?error=missing_params`)
   }
 
   try {
-    // Exchange code for Stripe account ID
-    const response = await stripe.oauth.token({
-      grant_type: 'authorization_code',
-      code
-    })
-
-    const stripeAccountId = response.stripe_user_id
-
-    if (!stripeAccountId) {
-      throw new Error('No Stripe account ID returned')
-    }
-
-    // Get account details
-    const account = await stripe.accounts.retrieve(stripeAccountId)
-    
-    // Store Stripe account in Supabase
-    const { error: dbError } = await supabase
-      .from('stripe_accounts')
-      .upsert({
-        user_id: state,
-        stripe_account_id: stripeAccountId,
-        account_details: account, // Store full account details
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id'
-      })
-
-    if (dbError) {
-      console.error('Failed to store Stripe account:', dbError)
-      throw dbError
-    }
-
-    // Set up webhook for this account (you might need to do this via Stripe dashboard instead)
-    // But for MVP, we can use the platform webhook
+    // ... existing code ...
 
     // Redirect to success page or dashboard
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard?connected=true`)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') || ''
+    return NextResponse.redirect(`${baseUrl}/dashboard?connected=true`)
 
   } catch (error) {
     console.error('Stripe Connect callback error:', error)
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/connect-stripe?error=connection_failed`)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, '') || ''
+    return NextResponse.redirect(`${baseUrl}/connect-stripe?error=connection_failed`)
   }
 }
