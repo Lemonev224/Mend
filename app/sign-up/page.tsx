@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input"
 import { useState } from "react"
 import { signUp } from '@/lib/backend/auth/auth'
 import { useRouter } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Mail, CheckCircle, AlertCircle, RefreshCw, ArrowRight, Shield } from 'lucide-react'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -16,6 +18,9 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState(false)
+  const [resendCount, setResendCount] = useState(0)
   const router = useRouter()
 
   useEffect(() => {
@@ -57,11 +62,8 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      // Adjusted to match your specific return type: { user, session }
       const response = await signUp(email, password, fullName)
 
-      // In Supabase, if an account is created but requires confirmation, 
-      // the user object is returned but the session might be null.
       if (response.user) {
         setSuccess(true)
         
@@ -77,7 +79,6 @@ export default function SignupPage() {
       
     } catch (err: any) {
       console.error('Signup error:', err)
-      // Specific check for existing users or other Supabase auth errors
       if (err.message?.includes('already registered')) {
         setError('An account with this email already exists.')
       } else {
@@ -85,6 +86,63 @@ export default function SignupPage() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (resendCount >= 3) {
+      setError('Too many resend attempts. Please wait 5 minutes or contact support.')
+      return
+    }
+
+    setResendLoading(true)
+    setResendSuccess(false)
+    setError('')
+
+    try {
+      const response = await fetch('/api/auth/resend-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to resend confirmation email')
+      }
+
+      setResendSuccess(true)
+      setResendCount(prev => prev + 1)
+      
+      // Show success message for 5 seconds
+      setTimeout(() => {
+        setResendSuccess(false)
+      }, 5000)
+
+    } catch (err: any) {
+      console.error('Resend error:', err)
+      setError(err.message || 'Failed to resend confirmation email')
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  const handleOpenEmailClient = () => {
+    // Create mailto link for popular email clients
+    const gmailLink = `https://mail.google.com/mail/u/0/#search/from%3A${encodeURIComponent('noreply@mendapp.tech')}+in%3Aanywhere`
+    const outlookLink = `https://outlook.live.com/mail/0/inbox/search/from%3A${encodeURIComponent('noreply@mendapp.tech')}`
+    
+    // Try to detect email client
+    const userAgent = navigator.userAgent.toLowerCase()
+    
+    if (userAgent.includes('gmail') || userAgent.includes('google')) {
+      window.open(gmailLink, '_blank')
+    } else if (userAgent.includes('outlook') || userAgent.includes('microsoft')) {
+      window.open(outlookLink, '_blank')
+    } else {
+      // Default mailto link
+      window.location.href = `mailto:?subject=Check your Mend confirmation email`
     }
   }
 
@@ -125,105 +183,203 @@ export default function SignupPage() {
             </div>
 
             {success ? (
-              <div className="text-center py-8">
-                <div className="text-green-500 mb-4">
-                  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-slate-900 mb-2">Check your email!</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  We've sent a confirmation link to <strong>{email}</strong>.
-                </p>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>Important:</strong> You must click the confirmation link in your email before you can log in.
+              <div className="space-y-6">
+                {/* Success Header */}
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Mail className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                    Verify your email
+                  </h3>
+                  <p className="text-slate-600">
+                    We've sent a confirmation link to
                   </p>
+                  <div className="mt-2 mb-4">
+                    <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg">
+                      <span className="font-medium">{email}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSuccess(false)}
+                        className="h-6 px-2 text-blue-600 hover:text-blue-800"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-500 mb-6">
-                  Didn't receive the email? Check your spam folder.
-                </p>
-                <div className="mt-6 space-y-3">
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={() => {
-                      alert('If you didn\'t receive the email, please try signing up again or contact support.')
-                    }}
+
+                {/* Important Instructions Card */}
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardContent className="p-4">
+                    <div className="flex gap-3">
+                      <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-blue-900 mb-1">
+                          Important: Check your email now
+                        </h4>
+                        <ul className="text-sm text-blue-800 space-y-1">
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                            <span>Click the verification link in the email</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                            <span>The link expires in 24 hours</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                            <span>Verify to access your dashboard</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Actions */}
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleOpenEmailClient}
+                    className="w-full bg-slate-900 hover:bg-slate-800"
+                    size="lg"
                   >
-                    Resend Confirmation
+                    Open Email App
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                  <Button asChild className="w-full">
-                    <Link href="/login">Go to Login</Link>
-                  </Button>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-slate-200"></div>
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-white px-2 text-slate-500">Need help?</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleResendConfirmation}
+                      disabled={resendLoading || resendCount >= 3}
+                      className="w-full"
+                    >
+                      {resendLoading ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Resend Verification Email
+                          {resendCount > 0 && ` (${resendCount}/3)`}
+                        </>
+                      )}
+                    </Button>
+
+                    {resendSuccess && (
+                      <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                        <CheckCircle className="h-4 w-4" />
+                        <span>Verification email resent successfully!</span>
+                      </div>
+                    )}
+
+                    {resendCount >= 3 && (
+                      <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-2 rounded">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>Resend limit reached. Please wait 5 minutes or contact support.</span>
+                      </div>
+                    )}
+
+                    <Button variant="ghost" asChild className="w-full">
+                      <Link href="/login">
+                        Back to Login
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Troubleshooting */}
+                <div className="text-sm text-slate-500 space-y-2">
+                  <p className="font-medium text-slate-700">Didn't receive the email?</p>
+                  <ul className="space-y-1 pl-5 list-disc">
+                    <li>Check your spam or junk folder</li>
+                    <li>Make sure you entered the correct email address</li>
+                    <li>Allow a few minutes for delivery</li>
+                    <li>Still having trouble? <a href="mailto:support@mendapp.tech" className="text-blue-600 hover:underline">Contact support</a></li>
+                  </ul>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Full Name
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="Alex Johnson"
-                    className="mt-1"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Work email
-                  </label>
-                  <Input
-                    type="email"
-                    placeholder="you@company.com"
-                    className="mt-1"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Password
-                  </label>
-                  <Input
-                    type="password"
-                    placeholder="At least 8 characters"
-                    className="mt-1"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </div>
-
-                {error && (
-                  <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
-                    {error}
+              <>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">
+                      Full Name
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="Alex Johnson"
+                      className="mt-1"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required
+                    />
                   </div>
-                )}
 
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? 'Creating account...' : 'Create account'}
-                </Button>
-              </form>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">
+                      Work email
+                    </label>
+                    <Input
+                      type="email"
+                      placeholder="you@company.com"
+                      className="mt-1"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">
+                      Password
+                    </label>
+                    <Input
+                      type="password"
+                      placeholder="At least 8 characters"
+                      className="mt-1"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
+                      {error}
+                    </div>
+                  )}
+
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Creating account...' : 'Create account'}
+                  </Button>
+                </form>
+
+                <p className="mt-6 text-center text-sm text-slate-500">
+                  Already have an account?{" "}
+                  <Link
+                    href="/login"
+                    className="font-medium text-slate-900 hover:underline"
+                  >
+                    Sign in
+                  </Link>
+                </p>
+              </>
             )}
-
-            <p className="mt-6 text-center text-sm text-slate-500">
-              Already have an account?{" "}
-              <Link
-                href="/login"
-                className="font-medium text-slate-900 hover:underline"
-              >
-                Sign in
-              </Link>
-            </p>
           </div>
         </div>
       </div>

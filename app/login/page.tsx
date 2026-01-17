@@ -46,6 +46,52 @@ export default function LoginPage() {
     }
   }
 
+  const handleResendConfirmation = async () => {
+  if (!email) {
+    setError('Please enter your email address first')
+    return
+  }
+
+  try {
+    const response = await fetch('/api/auth/resend-confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to resend confirmation email')
+    }
+
+    // Show success message
+    setError('')
+    alert('Confirmation email resent! Please check your inbox.')
+    
+  } catch (err: any) {
+    console.error('Resend error:', err)
+    setError(err.message || 'Failed to resend confirmation email')
+  }
+}
+
+// Then, modify the error display section to handle unverified users better:
+{error && (
+  <div className="text-sm text-red-500 bg-red-50 p-2 rounded">
+    {error}
+    {error.includes('Email not confirmed') && (
+      <div className="mt-2">
+        <button
+          onClick={handleResendConfirmation}
+          className="text-blue-600 hover:underline text-sm"
+        >
+          Resend verification email
+        </button>
+      </div>
+    )}
+  </div>
+)}
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-white">
       <div className="absolute -top-40 -left-40 h-[480px] w-[480px] rounded-full bg-violet-200/40 blur-3xl" />
