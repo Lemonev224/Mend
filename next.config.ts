@@ -5,10 +5,8 @@ const nextConfig: NextConfig = {
   env: {
     ADMIN_ACCESS_CODE: process.env.ADMIN_ACCESS_CODE,
   },
-  // Add this to handle Node.js modules on client
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Don't attempt to import fs/path modules on client
       config.resolve.fallback = {
         fs: false,
         path: false,
@@ -18,12 +16,14 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  // Enable server actions for email sending
   experimental: {
     serverActions: {
       allowedOrigins: ['mendapp.tech', 'localhost:3000'],
     },
   },
+  // Move turbopack to the root level
+  // This tells Next.js to ignore the webpack conflict or how to handle it
+  // Note: If your version still errors on this key, use Option 2.
 };
 
 export default nextConfig;
