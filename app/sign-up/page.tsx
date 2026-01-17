@@ -6,9 +6,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useState } from "react"
-import { signUp } from "@/lib/backend/auth/auth"
+import { signUp } from '@/lib/backend/auth/auth'
 import { useRouter } from "next/navigation"
-import { sendWelcomeEmail } from '@/lib/sendgrid'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -33,47 +32,57 @@ export default function SignupPage() {
     checkAuth()
   }, [router])
 
+  const sendWelcomeEmailAPI = async (email: string, name: string) => {
+    try {
+      const response = await fetch('/api/email/welcome', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      return await response.json()
+    } catch (error) {
+      console.error('Failed to send welcome email:', error)
+      return { success: false, error: 'Failed to send welcome email' }
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
     try {
-      // We destructure data and error. 
-      // If your signUp function returns {user, session} directly, 
-      // ensure your auth.ts helper wraps them in a 'data' object.
-      const { data, error: signUpError }: any = await signUp(email, password, fullName)
+      // Adjusted to match your specific return type: { user, session }
+      const response = await signUp(email, password, fullName)
 
-      if (signUpError) {
-        // Check if it's just an email confirmation error
-        if (signUpError.message?.includes('Email not confirmed')) {
-          console.log('User created, needs email confirmation')
-          setSuccess(true)
-          
-          try {
-            await sendWelcomeEmail(email, fullName)
-          } catch (emailError) {
-            console.error('Failed to send welcome email:', emailError)
-          }
-          return
-        }
-        throw signUpError
-      }
-
-      // Signup successful
-      console.log('Signup successful:', data)
-      
-      try {
-        await sendWelcomeEmail(email, fullName)
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError)
+      // In Supabase, if an account is created but requires confirmation, 
+      // the user object is returned but the session might be null.
+      if (response.user) {
+        setSuccess(true)
+        
+        // Send welcome email (async, doesn't block UI)
+        sendWelcomeEmailAPI(email, fullName).catch(err => 
+          console.error("Background email task failed:", err)
+        )
+        
+        console.log('Signup successful, awaiting confirmation')
+      } else {
+        throw new Error('Could not create user account')
       }
       
-      setSuccess(true)
-      
-    } catch (error: any) {
-      console.error('Signup error:', error)
-      setError(error.message || 'Failed to create account')
+    } catch (err: any) {
+      console.error('Signup error:', err)
+      // Specific check for existing users or other Supabase auth errors
+      if (err.message?.includes('already registered')) {
+        setError('An account with this email already exists.')
+      } else {
+        setError(err.message || 'Failed to create account')
+      }
     } finally {
       setLoading(false)
     }
@@ -89,13 +98,16 @@ export default function SignupPage() {
           <div className="text-xl font-semibold tracking-tight text-slate-900">
             Mend
           </div>
+
           <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
             Get started for free
           </h1>
+
           <p className="mt-4 max-w-md text-slate-600">
             Connect Stripe, recover failed revenue automatically, and keep your
             customers without awkward emails.
           </p>
+
           <p className="mt-6 text-sm text-slate-500">
             Free to start • No credit card required
           </p>
@@ -128,7 +140,19 @@ export default function SignupPage() {
                     <strong>Important:</strong> You must click the confirmation link in your email before you can log in.
                   </p>
                 </div>
+                <p className="text-sm text-slate-500 mb-6">
+                  Didn't receive the email? Check your spam folder.
+                </p>
                 <div className="mt-6 space-y-3">
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={() => {
+                      alert('If you didn\'t receive the email, please try signing up again or contact support.')
+                    }}
+                  >
+                    Resend Confirmation
+                  </Button>
                   <Button asChild className="w-full">
                     <Link href="/login">Go to Login</Link>
                   </Button>
@@ -137,7 +161,9 @@ export default function SignupPage() {
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Full Name</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Full Name
+                  </label>
                   <Input
                     type="text"
                     placeholder="Alex Johnson"
@@ -147,8 +173,11 @@ export default function SignupPage() {
                     required
                   />
                 </div>
+
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Work email</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Work email
+                  </label>
                   <Input
                     type="email"
                     placeholder="you@company.com"
@@ -158,8 +187,11 @@ export default function SignupPage() {
                     required
                   />
                 </div>
+
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Password</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    Password
+                  </label>
                   <Input
                     type="password"
                     placeholder="At least 8 characters"
@@ -185,7 +217,10 @@ export default function SignupPage() {
 
             <p className="mt-6 text-center text-sm text-slate-500">
               Already have an account?{" "}
-              <Link href="/login" className="font-medium text-slate-900 hover:underline">
+              <Link
+                href="/login"
+                className="font-medium text-slate-900 hover:underline"
+              >
                 Sign in
               </Link>
             </p>

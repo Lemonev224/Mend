@@ -1,11 +1,22 @@
-// lib/sendgrid.ts - Full version
-import sgMail from '@sendgrid/mail';
+// lib/sendgrid.ts - UPDATED VERSION
+// This file should ONLY be imported on the server side
 
-if (!process.env.SENDGRID_API_KEY) {
-  console.warn('SENDGRID_API_KEY is not set');
+// Check if we're on the server
+const isServer = typeof window === 'undefined';
+
+let sgMail: any = null;
+
+if (isServer) {
+  // Only import SendGrid on server side
+  const sendgridModule = require('@sendgrid/mail');
+  sgMail = sendgridModule.default || sendgridModule;
+  
+  if (process.env.SENDGRID_API_KEY) {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  } else {
+    console.warn('SENDGRID_API_KEY is not set');
+  }
 }
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 
 export interface EmailOptions {
   to: string;
@@ -16,7 +27,7 @@ export interface EmailOptions {
   replyTo?: string;
 }
 
-export async function sendEmail({
+async function sendEmailServer({
   to,
   subject,
   html,
@@ -24,6 +35,10 @@ export async function sendEmail({
   from = process.env.SENDGRID_FROM_EMAIL || 'Mend <noreply@mendapp.tech>',
   replyTo = 'support@mendapp.tech'
 }: EmailOptions) {
+  if (!sgMail) {
+    throw new Error('SendGrid is only available on the server');
+  }
+
   try {
     console.log('📧 Sending email to:', to);
     
@@ -48,8 +63,22 @@ export async function sendEmail({
   }
 }
 
-// Recovery email (for failed payments)
+// Export functions that will work on both client and server
+// On client, they'll return a mock/error
+export async function sendEmail(options: EmailOptions) {
+  if (!isServer) {
+    console.warn('SendGrid functions are only available on the server');
+    return { success: false, message: 'Email sending is server-side only' };
+  }
+  return sendEmailServer(options);
+}
+
 export async function sendRecoveryEmail(to: string, message: string) {
+  if (!isServer) {
+    console.warn('sendRecoveryEmail is server-side only');
+    return { success: false };
+  }
+
   const html = `
     <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
       <div style="background: #f8fafc; padding: 30px; border-radius: 12px; margin: 20px 0;">
@@ -65,15 +94,19 @@ export async function sendRecoveryEmail(to: string, message: string) {
     </div>
   `;
 
-  return sendEmail({
+  return sendEmailServer({
     to,
     subject: 'Payment Issue Update',
     html,
   });
 }
 
-// Welcome email for new users
 export async function sendWelcomeEmail(to: string, name: string) {
+  if (!isServer) {
+    console.warn('sendWelcomeEmail is server-side only');
+    return { success: false };
+  }
+
   const html = `
     <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
       <div style="background: #f8fafc; padding: 30px; border-radius: 12px; margin: 20px 0;">
@@ -102,9 +135,28 @@ export async function sendWelcomeEmail(to: string, name: string) {
     </div>
   `;
 
-  return sendEmail({
+  return sendEmailServer({
     to,
     subject: 'Welcome to Mend!',
     html,
+  });
+}
+
+export async function sendPasswordResetEmail(to: string, resetLink: string) {
+  if (!isServer) {
+    console.warn('sendPasswordResetEmail is server-side only');
+    return { success: false };
+  }
+
+  const html = `
+    <!-- Use the HTML template from earlier -->
+    <div>Your reset link: ${resetLink}</div>
+  `;
+
+  return sendEmailServer({
+    to,
+    subject: 'Reset Your Mend Password',
+    html,
+    text: `Reset your password: ${resetLink}`
   });
 }
