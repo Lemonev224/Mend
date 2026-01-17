@@ -5,7 +5,6 @@ export async function signUp(email: string, password: string, fullName: string) 
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard`,
       data: {
         full_name: fullName,
       }
@@ -32,7 +31,10 @@ export async function signIn(email: string, password: string) {
   return data
 }
 
-
+export async function signOut() {
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+}
 
 // lib/backend/auth/auth.ts
 export async function getCurrentUser() {
@@ -62,4 +64,13 @@ export async function updateProfile(userId: string, updates: any) {
     
   if (error) throw error
   return data
+}
+
+// Make sure we export everything explicitly
+export default {
+  signUp,
+  signIn,
+  signOut,
+  getCurrentUser,
+  updateProfile
 }
