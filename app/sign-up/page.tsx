@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { useState } from "react"
 import { signUp } from "@/lib/backend/auth/auth"
 import { useRouter } from "next/navigation"
+import { sendWelcomeEmail } from '@/lib/sendgrid'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -29,7 +30,6 @@ export default function SignupPage() {
         // No user, stay on signup page
       }
     }
-
     checkAuth()
   }, [router])
 
@@ -39,12 +39,40 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      await signUp(email, password, fullName)
+      // We destructure data and error. 
+      // If your signUp function returns {user, session} directly, 
+      // ensure your auth.ts helper wraps them in a 'data' object.
+      const { data, error: signUpError }: any = await signUp(email, password, fullName)
+
+      if (signUpError) {
+        // Check if it's just an email confirmation error
+        if (signUpError.message?.includes('Email not confirmed')) {
+          console.log('User created, needs email confirmation')
+          setSuccess(true)
+          
+          try {
+            await sendWelcomeEmail(email, fullName)
+          } catch (emailError) {
+            console.error('Failed to send welcome email:', emailError)
+          }
+          return
+        }
+        throw signUpError
+      }
+
+      // Signup successful
+      console.log('Signup successful:', data)
+      
+      try {
+        await sendWelcomeEmail(email, fullName)
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError)
+      }
+      
       setSuccess(true)
-      setTimeout(() => {
-        router.push('/login')
-      }, 3000)
+      
     } catch (error: any) {
+      console.error('Signup error:', error)
       setError(error.message || 'Failed to create account')
     } finally {
       setLoading(false)
@@ -61,16 +89,13 @@ export default function SignupPage() {
           <div className="text-xl font-semibold tracking-tight text-slate-900">
             Mend
           </div>
-
           <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
             Get started for free
           </h1>
-
           <p className="mt-4 max-w-md text-slate-600">
             Connect Stripe, recover failed revenue automatically, and keep your
             customers without awkward emails.
           </p>
-
           <p className="mt-6 text-sm text-slate-500">
             Free to start • No credit card required
           </p>
@@ -95,19 +120,24 @@ export default function SignupPage() {
                   </svg>
                 </div>
                 <h3 className="text-lg font-medium text-slate-900 mb-2">Check your email!</h3>
-                <p className="text-sm text-slate-600">
-                  We've sent a confirmation link to your email address. Please check your inbox and click the link to verify your account.
+                <p className="text-sm text-slate-600 mb-4">
+                  We've sent a confirmation link to <strong>{email}</strong>.
                 </p>
-                <p className="text-xs text-slate-500 mt-4">
-                  Redirecting to login page...
-                </p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-blue-800">
+                    <strong>Important:</strong> You must click the confirmation link in your email before you can log in.
+                  </p>
+                </div>
+                <div className="mt-6 space-y-3">
+                  <Button asChild className="w-full">
+                    <Link href="/login">Go to Login</Link>
+                  </Button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Full Name
-                  </label>
+                  <label className="text-sm font-medium text-slate-700">Full Name</label>
                   <Input
                     type="text"
                     placeholder="Alex Johnson"
@@ -117,11 +147,8 @@ export default function SignupPage() {
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Work email
-                  </label>
+                  <label className="text-sm font-medium text-slate-700">Work email</label>
                   <Input
                     type="email"
                     placeholder="you@company.com"
@@ -131,11 +158,8 @@ export default function SignupPage() {
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="text-sm font-medium text-slate-700">
-                    Password
-                  </label>
+                  <label className="text-sm font-medium text-slate-700">Password</label>
                   <Input
                     type="password"
                     placeholder="At least 8 characters"
@@ -161,10 +185,7 @@ export default function SignupPage() {
 
             <p className="mt-6 text-center text-sm text-slate-500">
               Already have an account?{" "}
-              <Link
-                href="/login"
-                className="font-medium text-slate-900 hover:underline"
-              >
+              <Link href="/login" className="font-medium text-slate-900 hover:underline">
                 Sign in
               </Link>
             </p>
